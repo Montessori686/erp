@@ -244,6 +244,34 @@ select option{background:var(--s2);}
 .bar-bg{height:5px;background:var(--s3);border-radius:3px;overflow:hidden;margin-top:4px;}
 .bar-fill{height:100%;border-radius:3px;transition:width .4s;}
 
+/* ═══ ANALYTICS ═══ */
+.an-grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+.an-grid3{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px;}
+@media(max-width:920px){.an-grid2,.an-grid3{grid-template-columns:1fr;}}
+.an-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r2);padding:14px 16px;box-shadow:var(--sh);}
+.an-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.an-title{font-size:13px;font-weight:800;color:var(--t1);}
+.an-sub{font-size:11px;color:var(--t3);}
+.an-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--acc-bg);color:var(--acc);border:1px solid var(--acc-bd);}
+.an-svg{width:100%;height:auto;display:block;overflow:visible;}
+.an-svg text{font-family:var(--font);fill:var(--t2);}
+.an-tot{font-size:22px;font-weight:900;color:var(--t1);margin-bottom:2px;}
+.an-tot-lbl{font-size:11px;color:var(--t3);margin-bottom:10px;}
+.an-legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px;font-size:11px;}
+.an-legend .lg-i{display:flex;align-items:center;gap:5px;color:var(--t2);}
+.an-legend .lg-dot{width:9px;height:9px;border-radius:50%;}
+.an-empty{text-align:center;color:var(--t3);padding:30px 10px;font-size:12px;}
+.hm-grid{display:grid;grid-template-columns:auto repeat(24,1fr);gap:2px;font-size:9px;direction:ltr;}
+.hm-lbl{color:var(--t3);padding:3px 5px;font-weight:600;text-align:center;align-self:center;}
+.hm-h{color:var(--t3);font-weight:600;text-align:center;padding:2px 0;}
+.hm-c{aspect-ratio:1;border-radius:3px;background:var(--s3);transition:transform .15s;cursor:help;}
+.hm-c:hover{transform:scale(1.25);outline:1px solid var(--acc);}
+.kpi-row{display:flex;align-items:baseline;gap:8px;margin-top:4px;}
+.kpi-delta{font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;}
+.kpi-up{background:rgba(16,185,129,.12);color:#10B981;}
+.kpi-down{background:rgba(239,68,68,.12);color:#EF4444;}
+.kpi-flat{background:var(--s3);color:var(--t3);}
+
 /* ═══ INVOICE ORDER FORM ═══ */
 .inv-form{background:var(--inv-bg);border:1px solid var(--inv-bd);border-radius:var(--r2);overflow:hidden;}
 .inv-form-hdr{padding:20px 24px 16px;border-bottom:2px solid var(--inv-bd);display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
@@ -1382,11 +1410,9 @@ td.mono.fw7{ letter-spacing:.02em; }
   vertical-align: middle;
   box-sizing: border-box;
 }
-/* ضمان thead ثابت */
+/* thead عادي — بدون sticky لتجنب تداخل عدة جداول في نفس الصفحة */
 .tw table thead{
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  position: static;
   background: var(--s2);
 }
 /* منع thead من الانفصال */
@@ -1394,12 +1420,19 @@ td.mono.fw7{ letter-spacing:.02em; }
   border-collapse: collapse;
   width: 100%;
 }
+/* فصل بصري واضح بين جداول متعددة على نفس الصفحة */
+.tw{margin-bottom:8px;}
+.tw + .tw{margin-top:16px;border-top:1px solid var(--bd);padding-top:8px;}
 /* الـ sort arrows لا تكسر الـ alignment */
 th.sortable{
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* منع أي صف من الانتقال لأسفل الصف التالي */
+.tw table tr{break-inside:avoid;}
+/* الـ tds ما تطلعش برة الـ cell */
+.tw table td{word-break:break-word;overflow-wrap:anywhere;}
 
 </style>
 </head>
@@ -1526,6 +1559,48 @@ th.sortable{
     <div class="sc" style="--sc:#8B5CF6"><div class="sc-ic">📦</div><div class="sc-val" id="dOrdsTotal">-</div><div class="sc-lbl">إجمالي الأوردرات</div></div>
     <div class="sc" style="--sc:#10B981"><div class="sc-ic">✅</div><div class="sc-val" id="dDelivered">-</div><div class="sc-lbl">تم التوصيل</div></div>
     <div class="sc" style="--sc:#EF4444"><div class="sc-ic">↩</div><div class="sc-val" id="dReturned">-</div><div class="sc-lbl">مرتجع</div></div>
+  </div>
+  <div class="sg">
+    <div class="sc" style="--sc:#38BDF8"><div class="sc-ic">💎</div><div class="sc-val" id="dAOV">-</div><div class="sc-lbl">متوسط قيمة الأوردر</div></div>
+    <div class="sc" style="--sc:#10B981"><div class="sc-ic">🧑‍🤝‍🧑</div><div class="sc-val" id="dNewCust">-</div><div class="sc-lbl">عملاء جدد</div></div>
+    <div class="sc" style="--sc:#F59E0B"><div class="sc-ic">📈</div><div class="sc-val" id="dCancelRate">-</div><div class="sc-lbl">معدل الإلغاء</div></div>
+    <div class="sc" style="--sc:#8B5CF6"><div class="sc-ic">🛍️</div><div class="sc-val" id="dItemsPO">-</div><div class="sc-lbl">متوسط قطع/أوردر</div></div>
+  </div>
+  <div class="an-card" style="margin-bottom:16px">
+    <div class="an-hd">
+      <div>
+        <div class="an-title">📈 تطور المبيعات</div>
+        <div class="an-sub">اتجاه المبيعات اليومية</div>
+      </div>
+      <select id="dTrendDays" onchange="renderTrend()" style="font-size:11px;padding:4px 8px;background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);color:var(--t1)">
+        <option value="7">7 أيام</option>
+        <option value="14">14 يوم</option>
+        <option value="30" selected>30 يوم</option>
+        <option value="60">60 يوم</option>
+        <option value="90">90 يوم</option>
+      </select>
+    </div>
+    <div id="dTrendChart"></div>
+  </div>
+  <div class="an-grid2">
+    <div class="an-card">
+      <div class="an-hd"><div class="an-title">🏆 أفضل المنتجات مبيعاً</div><span class="an-pill" id="dTopPKind">بالإيراد</span></div>
+      <div id="dTopProducts"></div>
+    </div>
+    <div class="an-card">
+      <div class="an-hd"><div class="an-title">🔀 توزيع حالات الأوردرات</div></div>
+      <div id="dStatusDonut"></div>
+    </div>
+  </div>
+  <div class="an-grid2">
+    <div class="an-card">
+      <div class="an-hd"><div class="an-title">🗺️ المبيعات حسب المحافظة</div><span class="an-sub" id="dGovCount"></span></div>
+      <div id="dGovChart"></div>
+    </div>
+    <div class="an-card">
+      <div class="an-hd"><div class="an-title">🕐 توقيت الطلبات</div><span class="an-sub">يوم الأسبوع × ساعة اليوم</span></div>
+      <div id="dHeatmap"></div>
+    </div>
   </div>
   <div class="g2">
     <div class="card"><div class="ch"><div class="ct">آخر الأوردرات</div><button class="btn btn-gh btn-sm" onclick="go('orders',document.querySelectorAll('.ni')[3]);loadOrders()">عرض الكل</button></div><div id="dOrds"></div></div>
@@ -2674,8 +2749,12 @@ function toast(msg, type){
 }
 
 // ═══ MODAL ═══
-function openMod(id){document.getElementById(id)?.classList.add('on');}
+function closeAllMods(){document.querySelectorAll('.mo.on').forEach(m=>m.classList.remove('on'));}
+function openMod(id){closeAllMods();document.getElementById(id)?.classList.add('on');}
 function closeMod(id){document.getElementById(id)?.classList.remove('on');}
+// Global Esc key + backdrop-click to close any open modal
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAllMods();});
+document.addEventListener('click',e=>{if(e.target.classList&&e.target.classList.contains('mo'))e.target.classList.remove('on');},true);
 
 // ═══ HELPERS ═══
 const fmt=n=>parseFloat(n||0).toLocaleString('ar-EG',{minimumFractionDigits:0,maximumFractionDigits:0});
@@ -2735,7 +2814,93 @@ const payB=p=>({cod:'<span class="b b-am">💵 COD</span>',prepaid:'<span class=
 const tagB=t=>({vip:'<span class="b b-gr">⭐ VIP</span>',regular:'<span class="b b-sky">✅ منتظم</span>',new:'<span class="b b-gy">🆕 جديد</span>',risky:'<span class="b b-rd">⚠️ خطر</span>'}[t]||`<span class="b b-gy">${t}</span>`);
 const intStB=s=>({processed:'<span class="b b-gr">✅ تمت</span>',failed:'<span class="b b-rd">❌ فشل</span>',skipped:'<span class="b b-am">⏭ تخطي</span>',processed_no_bosta:'<span class="b b-pu">⚠️ بدون شحن</span>',dry_run:'<span class="b b-gy">🔍 اختبار</span>'}[s]||`<span class="b b-gy">${s||'—'}</span>`);
 
+// ═══ SVG CHART HELPERS ═══
+const CHART_PAL=['#38BDF8','#10B981','#F59E0B','#8B5CF6','#EF4444','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16'];
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function svgLine(pts,opts={}){
+  const W=opts.w||720,H=opts.h||220,pL=44,pR=16,pT=14,pB=34;
+  if(!pts.length)return `<div class="an-empty">لا توجد بيانات كافية</div>`;
+  const iw=W-pL-pR,ih=H-pT-pB;
+  const vals=pts.map(p=>p.v),mx=Math.max(...vals,1),mn=0;
+  const xStep=pts.length>1?iw/(pts.length-1):0;
+  const yAt=v=>pT+ih-((v-mn)/(mx-mn||1))*ih;
+  const xAt=i=>pL+i*xStep;
+  let path='',area='';
+  pts.forEach((p,i)=>{const x=xAt(i),y=yAt(p.v);path+=(i?' L':'M')+x.toFixed(1)+' '+y.toFixed(1);});
+  area=`M${xAt(0).toFixed(1)} ${(pT+ih).toFixed(1)} `+path.replace('M','L').replace(/^L/,'L')+` L${xAt(pts.length-1).toFixed(1)} ${(pT+ih).toFixed(1)} Z`;
+  const step=Math.ceil(pts.length/7);
+  const xTicks=pts.map((p,i)=>i%step===0||i===pts.length-1?`<text x="${xAt(i)}" y="${H-10}" font-size="10" text-anchor="middle">${esc(p.l)}</text>`:'').join('');
+  const yTicks=[0,.25,.5,.75,1].map(f=>{const v=mx*f,y=pT+ih-f*ih;return `<line x1="${pL}" y1="${y}" x2="${W-pR}" y2="${y}" stroke="var(--bd)" stroke-width=".5" stroke-dasharray="2,3" opacity=".5"/><text x="${pL-6}" y="${y+3}" font-size="9" text-anchor="end">${fmt(Math.round(v))}</text>`;}).join('');
+  const dots=pts.map((p,i)=>`<circle cx="${xAt(i)}" cy="${yAt(p.v)}" r="3" fill="var(--acc)" stroke="var(--s1)" stroke-width="1.5"><title>${esc(p.l)}: ${fmt(p.v)} ج</title></circle>`).join('');
+  return `<svg class="an-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    <defs><linearGradient id="grLine" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#38BDF8" stop-opacity=".35"/><stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/></linearGradient></defs>
+    ${yTicks}
+    <path d="${area}" fill="url(#grLine)"/>
+    <path d="${path}" fill="none" stroke="#38BDF8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots}
+    ${xTicks}
+  </svg>`;
+}
+function svgBarsH(data,opts={}){
+  if(!data.length)return `<div class="an-empty">لا توجد بيانات</div>`;
+  const mx=Math.max(...data.map(d=>d.v),1);
+  const unit=opts.unit||'';
+  return `<div>${data.map((d,i)=>{const w=Math.round(d.v/mx*100);const c=opts.color||CHART_PAL[i%CHART_PAL.length];return `<div style="margin-bottom:9px">
+    <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;gap:8px">
+      <span class="fw7" style="color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%" title="${esc(d.l)}">${esc(d.l)}</span>
+      <span class="fw7" style="color:${c};white-space:nowrap">${fmt(d.v)}${unit}</span>
+    </div>
+    <div class="bar-bg" style="height:7px"><div class="bar-fill" style="width:${w}%;background:${c}"></div></div>
+  </div>`;}).join('')}</div>`;
+}
+function svgDonut(data,opts={}){
+  const total=data.reduce((s,d)=>s+d.v,0);
+  if(!total)return `<div class="an-empty">لا توجد بيانات</div>`;
+  const R=70,r=46,cx=90,cy=90;
+  let cum=0;
+  const arcs=data.map((d,i)=>{
+    const frac=d.v/total;
+    const a0=cum*Math.PI*2-Math.PI/2;
+    cum+=frac;
+    const a1=cum*Math.PI*2-Math.PI/2;
+    const lrg=frac>.5?1:0;
+    const x0=cx+R*Math.cos(a0),y0=cy+R*Math.sin(a0);
+    const x1=cx+R*Math.cos(a1),y1=cy+R*Math.sin(a1);
+    const xr0=cx+r*Math.cos(a1),yr0=cy+r*Math.sin(a1);
+    const xr1=cx+r*Math.cos(a0),yr1=cy+r*Math.sin(a0);
+    const c=d.c||CHART_PAL[i%CHART_PAL.length];
+    return `<path d="M${x0} ${y0} A${R} ${R} 0 ${lrg} 1 ${x1} ${y1} L${xr0} ${yr0} A${r} ${r} 0 ${lrg} 0 ${xr1} ${yr1} Z" fill="${c}"><title>${esc(d.l)}: ${fmt(d.v)} (${(frac*100).toFixed(1)}%)</title></path>`;
+  }).join('');
+  const legend=data.map((d,i)=>{const c=d.c||CHART_PAL[i%CHART_PAL.length];const pct=((d.v/total)*100).toFixed(1);return `<div class="lg-i"><span class="lg-dot" style="background:${c}"></span>${esc(d.l)} <span class="fw7">${pct}%</span></div>`;}).join('');
+  return `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+    <svg width="180" height="180" viewBox="0 0 180 180">${arcs}<text x="90" y="88" text-anchor="middle" font-size="12" fill="var(--t3)">الإجمالي</text><text x="90" y="104" text-anchor="middle" font-size="15" font-weight="800" fill="var(--t1)">${fmt(total)}</text></svg>
+    <div class="an-legend" style="flex:1;flex-direction:column;gap:6px">${legend}</div>
+  </div>`;
+}
+function svgHeatmap(matrix,opts={}){
+  const days=['أحد','إثن','ثلا','أرب','خمي','جمع','سبت'];
+  let mx=0;for(const r of matrix)for(const v of r)if(v>mx)mx=v;
+  const hLbl=Array.from({length:24},(_,i)=>`<div class="hm-h">${i}</div>`).join('');
+  const rows=matrix.map((row,ri)=>`<div class="hm-lbl">${days[ri]}</div>`+row.map((v,ci)=>{const op=mx?v/mx:0;const bg=op===0?'var(--s3)':`rgba(56,189,248,${(.18+op*.8).toFixed(2)})`;return `<div class="hm-c" style="background:${bg}" title="${days[ri]} - ${ci}:00 → ${v} أوردر"></div>`;}).join('')).join('');
+  return `<div class="hm-grid"><div></div>${hLbl}${rows}</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:10px;color:var(--t3)">
+      <span>أقل</span>
+      <div style="display:flex;gap:2px">
+        ${[0,.25,.5,.75,1].map(f=>`<div style="width:14px;height:8px;border-radius:2px;background:${f===0?'var(--s3)':`rgba(56,189,248,${(.18+f*.8).toFixed(2)})`}"></div>`).join('')}
+      </div>
+      <span>أكثر</span>
+    </div>`;
+}
+function arabicDate(d){const m=['1','2','3','4','5','6','7','8','9','10','11','12'];const dt=typeof d==='string'?new Date(d):d;return `${dt.getDate()}/${m[dt.getMonth()]}`;}
+
 // ═══ DASHBOARD ═══
+let _dashTrend=null;
+function renderTrend(){
+  if(!_dashTrend)return;
+  const days=parseInt(document.getElementById('dTrendDays')?.value||'30');
+  const pts=_dashTrend.slice(-days).map(d=>({l:arabicDate(d.d),v:d.v}));
+  document.getElementById('dTrendChart').innerHTML=svgLine(pts);
+}
 async function loadDash(){
   const range=document.getElementById('dashRange')?.value||'month';
   const now=new Date();
@@ -2781,6 +2946,80 @@ async function loadDash(){
   const totE=Object.values(cats).reduce((a,b)=>a+b,1);
   const clrs={إيجار:'#1A6FE8',مرتبات:'#8B5CF6',شحن:'#F59E0B',مشتريات:'#10B981',تسويق:'#38BDF8',أخرى:'#64748B'};
   document.getElementById('dExp').innerHTML=Object.entries(cats).sort((a,b2)=>b2[1]-a[1]).map(([c,v])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">${catB(c)||c}<span class="fw7">${fmt(v)} ج</span></div><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(v/totE*100)}%;background:${clrs[c]||'#4f6ef7'}"></div></div></div>`).join('')||empty('لا يوجد');
+  try{await loadDashAnalytics(range,fromDate,allOrds,rangeOrds);}catch(e){console.error('Analytics load failed:',e);}
+}
+async function loadDashAnalytics(range,fromDate,allOrds,rangeOrds){
+  // ── KPI extras ──
+  const live=rangeOrds.filter(o=>!['cancelled','returned'].includes(o.status));
+  const aov=live.length?live.reduce((s,o)=>s+parseFloat(o.total_after||0),0)/live.length:0;
+  const cancelRate=rangeOrds.length?(rangeOrds.filter(o=>o.status==='cancelled').length/rangeOrds.length*100):0;
+  document.getElementById('dAOV').textContent=fmt(Math.round(aov))+' ج';
+  document.getElementById('dCancelRate').textContent=cancelRate.toFixed(1)+'%';
+  // Trend — last 90 days by default, we'll store and render subset
+  const trendFrom=new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+  const [trendOrds,items,gov,custs]=await Promise.all([
+    sbGet(`/rest/v1/orders?select=id,total_after,status,created_at&created_at=gte.${trendFrom}T00:00:00&order=created_at.asc`),
+    sbGet('/rest/v1/order_items?select=order_id,product_id,qty,unit_price,products(name,sku)&limit=5000'),
+    sbGet('/rest/v1/shipments?select=governorate,cod_collected,cash_collected'),
+    sbGet('/rest/v1/customers?select=id,created_at,total_orders')
+  ]);
+  // ── Avg items/order (approximate in-range from trendOrds) ──
+  const rangeTrend=fromDate?trendOrds.filter(o=>o.created_at>=fromDate):trendOrds;
+  const rtLive=rangeTrend.filter(o=>!['cancelled','returned'].includes(o.status));
+  const orderItemsCount={};
+  items.forEach(it=>{if(it.order_id!=null)orderItemsCount[it.order_id]=(orderItemsCount[it.order_id]||0)+parseInt(it.qty||0);});
+  const rtItemCounts=rtLive.map(o=>orderItemsCount[o.id]||0).filter(x=>x>0);
+  const avgItems=rtItemCounts.length?rtItemCounts.reduce((a,b)=>a+b,0)/rtItemCounts.length:0;
+  document.getElementById('dItemsPO').textContent=avgItems?avgItems.toFixed(1):'-';
+  // ── New customers in range ──
+  const newCust=fromDate?custs.filter(c=>c.created_at>=fromDate).length:custs.length;
+  document.getElementById('dNewCust').textContent=fmt(newCust);
+  // ── Trend: fill missing days, group by date ──
+  const byDay={};
+  trendOrds.filter(o=>o.status!=='cancelled').forEach(o=>{
+    const d=(o.created_at||'').slice(0,10);
+    if(d)byDay[d]=(byDay[d]||0)+parseFloat(o.total_after||0);
+  });
+  const trendArr=[];
+  for(let i=89;i>=0;i--){
+    const dt=new Date(Date.now()-i*86400000);
+    const k=dt.toISOString().slice(0,10);
+    trendArr.push({d:dt,k,v:Math.round(byDay[k]||0)});
+  }
+  _dashTrend=trendArr;
+  renderTrend();
+  // ── Top products by revenue ──
+  const prodAgg={};
+  items.forEach(it=>{
+    const k=it.product_id;if(!k)return;
+    const nm=it.products?.name||('#'+k);
+    const rev=parseFloat(it.qty||0)*parseFloat(it.unit_price||0);
+    if(!prodAgg[k])prodAgg[k]={l:nm,v:0,q:0};
+    prodAgg[k].v+=rev;prodAgg[k].q+=parseFloat(it.qty||0);
+  });
+  const top=Object.values(prodAgg).sort((a,b)=>b.v-a.v).slice(0,8).map(p=>({l:p.l,v:Math.round(p.v)}));
+  document.getElementById('dTopProducts').innerHTML=top.length?svgBarsH(top,{unit:' ج'}):`<div class="an-empty">لا توجد بيانات بيع بعد</div>`;
+  // ── Order status donut ──
+  const statAgg={};allOrds.forEach(o=>{const s=o.status||'unknown';statAgg[s]=(statAgg[s]||0)+1;});
+  const stColors={pending:'#F59E0B',confirmed:'#38BDF8',shipped:'#8B5CF6',delivered:'#10B981',returned:'#EF4444',cancelled:'#64748B',unknown:'#94A3B8'};
+  const stLabels={pending:'معلق',confirmed:'مؤكد',shipped:'مُشحن',delivered:'توصّل',returned:'مرتجع',cancelled:'ملغي',unknown:'غير محدد'};
+  const donutData=Object.entries(statAgg).map(([k,v])=>({l:stLabels[k]||k,v,c:stColors[k]||'#64748B'}));
+  document.getElementById('dStatusDonut').innerHTML=donutData.length?svgDonut(donutData):`<div class="an-empty">لا توجد أوردرات</div>`;
+  // ── Governorate chart ──
+  const govAgg={};
+  (gov||[]).forEach(s=>{
+    const g=(s.governorate||'غير محدد').trim();
+    const v=parseFloat(s.cod_collected||s.cash_collected||0);
+    govAgg[g]=(govAgg[g]||0)+v;
+  });
+  const govData=Object.entries(govAgg).filter(([g])=>g!=='غير محدد'||govAgg[g]>0).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([l,v])=>({l,v:Math.round(v)}));
+  document.getElementById('dGovChart').innerHTML=govData.length?svgBarsH(govData,{unit:' ج',color:'#10B981'}):`<div class="an-empty">لا توجد بيانات شحنات بعد</div>`;
+  document.getElementById('dGovCount').textContent=govData.length?govData.length+' محافظة':'';
+  // ── Hourly × day heatmap (all time) ──
+  const hm=Array.from({length:7},()=>Array(24).fill(0));
+  trendOrds.forEach(o=>{if(!o.created_at)return;const dt=new Date(o.created_at);hm[dt.getDay()][dt.getHours()]++;});
+  const hasAnyHm=hm.some(r=>r.some(v=>v>0));
+  document.getElementById('dHeatmap').innerHTML=hasAnyHm?svgHeatmap(hm):`<div class="an-empty">لا توجد بيانات كافية</div>`;
 }
 async function updPBadge(){const d=await sbGet('/rest/v1/orders?select=id&status=eq.pending');const pb=document.getElementById('pBadge');pb.textContent=d.length;pb.style.display=d.length>0?'block':'none';}
 
@@ -2812,7 +3051,8 @@ function filterOrders(){
         ${o.status==='shipped'&&o.shipments?.[0]?.tracking_id?`<a href="https://bosta.co/tracking-shipment/${o.shipments[0].tracking_id}" target="_blank" class="btn btn-tl btn-sm">🔗</a>`:''}
       </td>
     </tr>`)
-  ,{cbKey:'id',tableId:'orders_tbl'});;
+  ,{cbKey:'id',tableId:'orders_tbl'});
+  dtApply('orders_tbl');
 }
 
 // ═══ VIEW ORDER + INVOICE ═══
@@ -3454,7 +3694,9 @@ async function saveProd(){const sku=document.getElementById('pmSku').value.trim(
 async function loadInventory(){invData=await sbGet('/rest/v1/inventory?select=*,products(sku,name,category,min_stock,cost_price,base_price,image_url)&order=product_id');const totCost=invData.reduce((s,i)=>s+(i.stock_qty||0)*parseFloat(i.products?.cost_price||0),0);const totRet=invData.reduce((s,i)=>s+(i.stock_qty||0)*parseFloat(i.products?.base_price||0),0);const low=invData.filter(i=>i.stock_qty<=(i.products?.min_stock||minStk)).length;document.getElementById('invTotal').textContent=fmt(totCost)+' ج';document.getElementById('invRetail').textContent=fmt(totRet)+' ج';document.getElementById('invLow').textContent=low+' منتج';filterInventory();}
 function filterInventory(){const q=document.getElementById('fIS').value.toLowerCase(),lv=document.getElementById('fIL').value,cat=document.getElementById('fIC').value;const d=invData.filter(i=>{if(q&&!i.products?.name?.toLowerCase().includes(q)&&!i.products?.sku?.toLowerCase().includes(q))return false;if(cat&&i.products?.category!==cat)return false;const qty=i.stock_qty||0,mn=i.products?.min_stock||minStk;if(lv==='zero'&&qty!==0)return false;if(lv==='low'&&(qty===0||qty>mn))return false;if(lv==='ok'&&qty<=mn)return false;return true;});
   document.getElementById('fICnt').textContent=d.length+' منتج';
-  document.getElementById('invC').innerHTML=buildTbl(['صورة','SKU','المنتج','التصنيف / مورد','الكمية','الحد الأدنى','قيمة المخزون','المستوى'],d.map(i=>{const qty=i.stock_qty||0,mn=i.products?.min_stock||minStk,cost=parseFloat(i.products?.cost_price||0);const lvl=qty<=0?'<span class="b b-rd">نفد</span>':qty<=mn?'<span class="b b-am">منخفض</span>':'<span class="b b-gr">كافي</span>';return`<tr><td>${imgCell(i.products?.image_url)}</td><td class="mono">${i.products?.sku||'-'}</td><td class="fw7">${i.products?.name||'-'}</td><td>${catB(i.products?.category)||'—'}</td><td class="fw7" style="color:${qty<=0?'var(--red)':qty<=mn?'var(--amber)':'var(--green)'}">${qty}</td><td class="ta">${mn}</td><td style="color:var(--t2)">${cost>0?fmt(qty*cost)+' ج':'—'}</td><td>${lvl}</td></tr>`;}),{tableId:'inventory_tbl'});}
+  document.getElementById('invC').innerHTML=buildTbl(['صورة','SKU','المنتج','التصنيف / مورد','الكمية','الحد الأدنى','قيمة المخزون','المستوى'],d.map(i=>{const qty=i.stock_qty||0,mn=i.products?.min_stock||minStk,cost=parseFloat(i.products?.cost_price||0);const lvl=qty<=0?'<span class="b b-rd">نفد</span>':qty<=mn?'<span class="b b-am">منخفض</span>':'<span class="b b-gr">كافي</span>';return`<tr><td>${imgCell(i.products?.image_url)}</td><td class="mono">${i.products?.sku||'-'}</td><td class="fw7">${i.products?.name||'-'}</td><td>${catB(i.products?.category)||'—'}</td><td class="fw7" style="color:${qty<=0?'var(--red)':qty<=mn?'var(--amber)':'var(--green)'}">${qty}</td><td class="ta">${mn}</td><td style="color:var(--t2)">${cost>0?fmt(qty*cost)+' ج':'—'}</td><td>${lvl}</td></tr>`;}),{tableId:'inventory_tbl'});
+  dtApply('inventory_tbl');
+}
 
 // ═══ MOVEMENTS ═══
 async function loadMovements(){mvData=await sbGet('/rest/v1/inventory_movements?select=id,type,quantity,reason,stock_after,created_at,product_id,products(sku,name)&order=id.desc&limit=500');filterMovements();}
@@ -3482,7 +3724,7 @@ function filterExpenses(){const q=document.getElementById('fES').value.toLowerCa
       ${mkCB(e.id,'expenses_tbl')}<td style="font-size:12px;color:var(--t2)">${fmtD(e.expense_date||e.created_at)}</td><td>${catB(e.category)||e.category||'—'}</td><td class="fw7 tr">${fmt(e.amount)} ج</td><td style="font-size:12px;color:var(--t2)">${e.description||'—'}</td><td>${payB(e.payment_method||'cash')}</td><td><button class='btn btn-del btn-sm' onclick='deleteExpense(${e.id})'>🗑</button></td></tr>`),{cbKey:'id',tableId:'expenses_tbl'});
   dtApply('expenses_tbl');
 }
-async function saveExp(){const d=document.getElementById('emD').value,a=parseFloat(document.getElementById('emA').value)||0,c2=document.getElementById('emC').value,p=document.getElementById('emP').value,desc=document.getElementById('emDsc').value,n=document.getElementById('emN').value;if(!d||!a||!c2){toast('أدخل التاريخ والمبلغ والتصنيف','err');return;}await sbPost('/rest/v1/expenses',{expense_expense_date:d,amount:a,category:c2,payment_method:p,description:desc,notes:n});toast('✅ تم حفظ المصروف');closeMod('expMod');loadExpenses();}
+async function saveExp(){const d=document.getElementById('emD').value,a=parseFloat(document.getElementById('emA').value)||0,c2=document.getElementById('emC').value,p=document.getElementById('emP').value,desc=document.getElementById('emDsc').value,n=document.getElementById('emN').value;if(!d||!a||!c2){toast('أدخل التاريخ والمبلغ والتصنيف','err');return;}await sbPost('/rest/v1/expenses',{expense_date:d,amount:a,category:c2,payment_method:p,description:desc,notes:n});toast('✅ تم حفظ المصروف');closeMod('expMod');loadExpenses();}
 
 // ═══ FINANCIAL ═══
 async function loadFinancial(){
@@ -3750,8 +3992,7 @@ function slP(id,sku,name,price,prodId,wsBasePrice){
 }
 function clt(id){const q=parseFloat(document.getElementById(`qty-${id}`)?.value)||0,p=parseFloat(document.getElementById(`prc-${id}`)?.value)||0,d=parseFloat(document.getElementById(`dsc-${id}`)?.value)||0;const lt=document.getElementById(`lt-${id}`);if(lt)lt.textContent=((q*p)-d).toFixed(0)+' ج';updT();}
 function rmi(id){document.getElementById(`ir-${id}`)?.remove();updT();}
-function updT(){let tot=0;for(let i=1;i<=iCnt;i++){const q=parseFloat(document.getElementById(`qty-${i}`)?.value)||0,p=parseFloat(document.getElementById(`prc-${i}`)?.value)||0;tot+=q*p;}const disc=parseFloat(document.getElementById('oDsc').value)||0;const dtype=document.getElementById('oDiscType').value;const discAmt=dtype==='percent'?tot*(disc/100):disc;document.getElementById('tB').textContent=fmt(tot)+' ج';document.getElementById('tD').textContent='-'+fmt(discAmt)+' ج';document.getElementById('tA').textContent=fmt(tot-discAmt)+' ج';}
-  updShipCost(); // حدّث COD preview
+function updT(){let tot=0;for(let i=1;i<=iCnt;i++){const q=parseFloat(document.getElementById(`qty-${i}`)?.value)||0,p=parseFloat(document.getElementById(`prc-${i}`)?.value)||0;tot+=q*p;}const disc=parseFloat(document.getElementById('oDsc').value)||0;const dtype=document.getElementById('oDiscType').value;const discAmt=dtype==='percent'?tot*(disc/100):disc;document.getElementById('tB').textContent=fmt(tot)+' ج';document.getElementById('tD').textContent='-'+fmt(discAmt)+' ج';document.getElementById('tA').textContent=fmt(tot-discAmt)+' ج';if(typeof updShipCost==='function')updShipCost();/* حدّث COD preview */}
 
 // تحقق من التكرار
 let dupTimer=null;
@@ -3895,11 +4136,13 @@ document.addEventListener('click',e=>{if(!e.target.closest('.pw'))document.query
 // ════ v10 FEATURES ════
 
 function go(id,el){
+  closeAllMods();
   document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on');});
   var pg=document.getElementById(id);
   if(pg)pg.classList.add('on');
   document.querySelectorAll('.ni').forEach(function(n){n.classList.remove('on');});
   if(el&&el.classList)el.classList.add('on');
+  try{window.scrollTo(0,0);}catch(_){}
 }
 function goAndClose(page,el){go(page,el);}
 
@@ -5800,9 +6043,9 @@ function renderCatalogPreview(){
   <!-- Tiers legend -->
   <div class="cat-tiers-legend">
     <div class="cat-tier-badge cat-tbase">📦 السعر الأساسي (1 قطعة+)</div>
-    <div class="cat-tier-badge cat-t1">🟢 شريحة 1: ${p1qty||t1qty}+ قطعة = خصم ${t1pct}%</div>
-    <div class="cat-tier-badge cat-t2">🔵 شريحة 2: ${p2qty||t2qty}+ قطعة = خصم ${t2pct}%</div>
-    <div class="cat-tier-badge cat-t3">🔴 شريحة 3: ${p3qty||t3qty}+ قطعة = خصم ${t3pct}%</div>
+    <div class="cat-tier-badge cat-t1">🟢 شريحة 1: ${t1qty}+ قطعة = خصم ${t1pct}%</div>
+    <div class="cat-tier-badge cat-t2">🔵 شريحة 2: ${t2qty}+ قطعة = خصم ${t2pct}%</div>
+    <div class="cat-tier-badge cat-t3">🔴 شريحة 3: ${t3qty}+ قطعة = خصم ${t3pct}%</div>
   </div>
 
   <!-- Table -->
