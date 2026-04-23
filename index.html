@@ -1341,8 +1341,9 @@ tbody tr:hover td{background:var(--acc-bg) !important;}
 .pl-sub td{padding:6px 13px;border-bottom:1px solid var(--bd);font-size:12px;color:var(--t2);}
 .pl-sub:hover td{background:var(--hov);}
 .pl-total td{padding:8px 13px;border-top:1px solid var(--bd2);border-bottom:1px solid var(--bd2);font-weight:700;}
-.pl-section td{padding:10px 13px;border-top:2px solid var(--bd);border-bottom:2px solid var(--bd);font-weight:700;font-size:14px;background:var(--s2);}
-.pl-final td{padding:12px 13px;border-top:2px solid var(--acc);border-bottom:2px solid var(--acc);font-weight:900;font-size:15px;background:var(--acc-bg);}
+.pl-section td{padding:10px 13px;border-top:2px solid var(--bd2);border-bottom:2px solid var(--bd2);font-weight:700;font-size:14px;}
+.pl-section tr td:first-child{border-right:3px solid var(--acc);}
+.pl-final td{padding:12px 13px;border-top:2px solid var(--acc);border-bottom:2px solid var(--acc);font-weight:900;font-size:15px;}
 .pl-hdr td{padding:5px 13px 3px;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;background:var(--s2);border-bottom:1px solid var(--bd);}
 .pl-sep td{height:6px;background:var(--bg);border:none;padding:0;}
 .pl-val{text-align:center!important;}
@@ -4951,7 +4952,8 @@ async function loadFinancial(){
   const productRev  = validOrds.reduce((s,o)=>s+parseFloat(o.total_after||0),0);
   const shipRev     = validOrds.reduce((s,o)=>s+parseFloat(o.shipping_cost||0),0);
   const returnsVal  = returnOrds.reduce((s,o)=>s+parseFloat(o.total_after||0),0);
-  const grossRev    = productRev + shipRev;
+  // الشحن pass-through — لا يدخل في حساب الربح
+  const grossRev    = productRev;          // بدون الشحن
   const netRev      = grossRev - returnsVal;
 
   // ── COGS من financial_summary ──
@@ -5038,8 +5040,9 @@ function calcPLData(ords,exps){
   var productRev=valid.reduce(function(s,o){return s+parseFloat(o.total_after||0);},0);
   var shipRev   =valid.reduce(function(s,o){return s+parseFloat(o.shipping_cost||0);},0);
   var returnsVal=returned.reduce(function(s,o){return s+parseFloat(o.total_after||0);},0);
-  var grossRev  =productRev+shipRev;
-  var netRev    =grossRev-returnsVal;
+  // ── الشحن pass-through: العميل يدفعه ويروح لـ Bosta → لا يدخل في الربح ──
+  var grossRev  = productRev;            // بدون الشحن
+  var netRev    = grossRev - returnsVal; // بعد المرتجعات
   var expByCat  ={};
   (exps||[]).forEach(function(e){
     var cat=e.category||'أخرى';
@@ -5162,8 +5165,16 @@ function renderPLBody(c,p,cLbl,pLbl){
   // ── الإيرادات ──
   t+=hdr('💰 الإيرادات');
   t+=row('إيرادات المنتجات',c.productRev,p.productRev,{indent:1});
-  t+=row('إيرادات الشحن',c.shipRev,p.shipRev,{indent:1});
-  t+=row('الإيرادات الإجمالية',c.grossRev,p.grossRev,{cls:'pl-total'});
+  // الشحن pass-through: يظهر معلوماتياً فقط — لا يدخل في الربح
+  t+='<tr class="pl-sub" style="opacity:.65">'+
+    '<td style="padding-right:31px;color:var(--t3);font-style:italic">'+
+      '🚚 مصاريف الشحن <span style="font-size:9px;background:rgba(245,158,11,.1);color:var(--amber);padding:1px 6px;border-radius:8px;margin-right:4px">pass-through</span>'+
+    '</td>'+
+    '<td class="pl-val" style="color:var(--t3)">'+fmt(c.shipRev)+' ج</td>'+
+    '<td class="pl-val" style="color:var(--t3)">'+fmt(p.shipRev)+' ج</td>'+
+    '<td class="pl-delta" style="color:var(--t3);font-size:10px">لا تؤثر على الربح</td>'+
+  '</tr>';
+  t+=row('إجمالي إيرادات المنتجات',c.grossRev,p.grossRev,{cls:'pl-total'});
   t+=row('− المرتجعات',-c.returnsVal,-p.returnsVal,{indent:1,invert:true});
   t+=sep();
   t+=row('صافي الإيرادات',c.netRev,p.netRev,{cls:'pl-section'});
