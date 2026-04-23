@@ -3281,6 +3281,29 @@ th.sortable{
   </div>
 </div>
 
+<!-- ══ MODAL: Quick Input — بديل prompt() ══ -->
+<div class="mo" id="quickInputMod" style="display:none" aria-hidden="true">
+  <div class="modal" style="max-width:420px">
+    <div class="mo-h">
+      <div class="mo-t" id="qiTitle">إدخال</div>
+      <button class="mo-x" onclick="qiCancel()">✕</button>
+    </div>
+    <div class="mo-b">
+      <div class="fg">
+        <label id="qiLabel" style="font-size:13px;font-weight:700;color:var(--t2)"></label>
+        <div id="qiInputWrap" style="margin-top:8px">
+          <!-- يتملى ديناميكياً: input أو textarea أو number -->
+        </div>
+        <div id="qiHint" style="font-size:11px;color:var(--t3);margin-top:6px;display:none"></div>
+      </div>
+    </div>
+    <div class="mo-f">
+      <button class="btn btn-gh" onclick="qiCancel()">إلغاء</button>
+      <button class="btn btn-p" id="qiConfirmBtn" onclick="qiConfirm()">✓ حفظ</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL: استلام بضاعة من PO ══ -->
 <div class="mo" id="poReceiveMod" style="display:none" aria-hidden="true">
   <div class="modal wide">
@@ -3310,6 +3333,29 @@ const SB_URL='https://kkjwfjbkshfpuzyetynq.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrandmamJrc2hmcHV6eWV0eW5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNDM0MjEsImV4cCI6MjA5MTkxOTQyMX0.lAJJ76Or50fmuZsW_e5zY5whI2Da_YvcQM7YjVu24mY';
 let sb=null,user=null,iCnt=0,selChan='',confId=null,shipOrdId=null,editSupId=null;
 var _userAllowedChannels = []; // [] = كل القنوات مسموح / ['EasyOrder','Instagram'] = مقيّد
+var _userPerms = null;         // null = admin (كل الصلاحيات) | {} = object للصلاحيات المحددة
+var _userRole  = 'admin';      // 'admin' | 'moderator' | 'viewer'
+
+// ── ربط كل صفحة بالصلاحية المطلوبة لعرضها ──
+var PAGE_PERMS = {
+  dash:      null,               // Dashboard يظهر للكل دائماً
+  newOrder:  'create_order',
+  orders:    'view_orders',
+  intake:    'view_orders',
+  customers: 'view_customers',
+  shipments: 'view_orders',
+  products:  'view_products',
+  inventory: 'view_inventory',
+  movements: 'view_inventory',
+  expenses:  'add_expense',
+  financial: 'view_financial',
+  purchases: 'view_purchases',
+  suppliers: 'view_purchases',
+  wholesale: 'view_wholesale',
+  users:     'manage_users',
+  settings:  'view_settings',
+  catalog:   'view_products',
+};
 let oData=[],pData=[],invData=[],mvData=[],shData=[],exData=[],supData=[],poData=[],cusData=[],intakeData=[];
 let minStk=5,oTab='all',sTab='all';
 // ── Server-side pagination state للأوردرات ──
@@ -3372,21 +3418,100 @@ function showApp(){
   }catch(_){}
   loadSettings();loadDash();updPBadge();
   document.getElementById('invPreviewDate').textContent=new Date().toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'});
-  // تحميل قيود القنوات بعد الـ login
-  loadUserChannelRestrictions();
+  // تحميل كل الصلاحيات (قنوات + صفحات) بعد الـ login
+  loadUserPermissions();
 }
 
 // ── تحميل القنوات المسموح بها للمستخدم الحالي ──
-async function loadUserChannelRestrictions(){
+// ════ نظام الصلاحيات الكامل — يستبدل loadUserChannelRestrictions ════
+async function loadUserPermissions(){
   if(!user) return;
   try{
-    var data=await sbGet('/rest/v1/app_users?auth_user_id=eq.'+user.id+'&select=allowed_channels,role&limit=1');
-    if(data&&data[0]){
-      _userAllowedChannels=data[0].allowed_channels||[];
+    var data=await sbGet('/rest/v1/app_users?auth_user_id=eq.'+user.id+'&select=role,permissions,allowed_channels&limit=1');
+    if(!data||!data[0]) return;
+    var appUser=data[0];
+    _userRole=appUser.role||'viewer';
+    _userAllowedChannels=appUser.allowed_channels||[];
+
+    if(_userRole==='admin'){
+      // Admin: كل الصلاحيات — لا قيود
+      _userPerms=null;
       applyChannelRestrictions();
+      return;
     }
-  }catch(e){ console.warn('loadUserChannelRestrictions:',e); }
+
+    // بناء كائن الصلاحيات من القيم المحفوظة + defaults للدور
+    var stored=appUser.permissions||{};
+    var perms={};
+    PERMS_DEF.forEach(function(p){
+      if(stored[p.key]!==undefined){
+        perms[p.key]=stored[p.key]===true;
+      } else {
+        perms[p.key]=(_userRole==='moderator')?p.default_mod:p.default_viewer;
+      }
+    });
+    _userPerms=perms;
+
+    applyPagePermissions();
+    applyChannelRestrictions();
+    console.log('[Permissions] Role:',_userRole,'| Perms:',perms);
+  }catch(e){ console.warn('loadUserPermissions:',e); }
 }
+
+// ── فحص صلاحية معينة ──
+function hasPerm(key){
+  if(_userPerms===null) return true; // admin
+  if(!key) return true;              // بدون قيود
+  return _userPerms[key]===true;
+}
+
+// ── تطبيق الصلاحيات على الـ nav وإخفاء الصفحات المحظورة ──
+function applyPagePermissions(){
+  if(_userPerms===null) return; // admin — كل شيء ظاهر
+
+  // 1. إخفاء nav items في الـ sidebar
+  document.querySelectorAll('.ni').forEach(function(ni){
+    var m=(ni.getAttribute('onclick')||'').match(/go\('([^']+)'/);
+    if(!m) return;
+    var perm=PAGE_PERMS[m[1]];
+    if(perm!==undefined&&!hasPerm(perm)){
+      ni.style.display='none';
+    }
+  });
+
+  // 2. إخفاء more sheet items (موبايل)
+  document.querySelectorAll('.mgi').forEach(function(mgi){
+    var m=(mgi.getAttribute('onclick')||'').match(/moreGo\('([^']+)'/);
+    if(!m) return;
+    var perm=PAGE_PERMS[m[1]];
+    if(perm!==undefined&&!hasPerm(perm)){
+      mgi.style.display='none';
+    }
+  });
+
+  // 3. إخفاء bottom nav items (موبايل)
+  document.querySelectorAll('.bni').forEach(function(bni){
+    var m=(bni.getAttribute('onclick')||'').match(/bnGo\(event,'([^']+)'/);
+    if(!m) return;
+    var perm=PAGE_PERMS[m[1]];
+    if(perm!==undefined&&!hasPerm(perm)){
+      bni.style.display='none';
+    }
+  });
+
+  // 4. لو الصفحة الحالية محظورة → redirect للـ dashboard
+  var curPg=document.querySelector('.pg.on');
+  if(curPg){
+    var curId=curPg.id;
+    var curPerm=PAGE_PERMS[curId];
+    if(curPerm&&!hasPerm(curPerm)){
+      go('dash',null);
+    }
+  }
+}
+
+// compat stub
+async function loadUserChannelRestrictions(){ return loadUserPermissions(); }
 
 // ── تطبيق القيود على الـ Pills في فورم الأوردر ──
 function applyChannelRestrictions(){
@@ -4483,12 +4608,70 @@ function filterShipments(){const q=document.getElementById('fSS').value.toLowerC
 }
 
 
+// ════════════════════════════════════════════════
+// QUICK INPUT SYSTEM — بديل window.prompt()
+// ════════════════════════════════════════════════
+var _qiCallback = null;
+
+function quickInput(opts){
+  // opts: {title, label, hint, defaultVal, type:'text'|'number'|'textarea', confirmLabel, onConfirm}
+  _qiCallback = opts.onConfirm || null;
+  _setTxt('qiTitle', opts.title || 'إدخال');
+  _setTxt('qiLabel', opts.label || '');
+  var hintEl = document.getElementById('qiHint');
+  if(hintEl){ hintEl.textContent = opts.hint||''; hintEl.style.display = opts.hint?'block':'none'; }
+  var btn = document.getElementById('qiConfirmBtn');
+  if(btn) btn.textContent = (opts.confirmLabel||'✓ حفظ');
+  // بناء الـ input
+  var wrap = document.getElementById('qiInputWrap');
+  if(!wrap) return;
+  var type = opts.type||'text';
+  var defVal = opts.defaultVal!=null ? opts.defaultVal : '';
+  if(type==='textarea'){
+    wrap.innerHTML = '<textarea id="qiInput" rows="3" style="font-size:13px;resize:vertical">'+defVal+'</textarea>';
+  } else if(type==='number'){
+    wrap.innerHTML = '<input type="number" id="qiInput" value="'+defVal+'" min="0" step="0.5" style="font-size:14px;font-weight:700">';
+  } else {
+    wrap.innerHTML = '<input type="text" id="qiInput" value="'+defVal+'" style="font-size:13px">';
+  }
+  openMod('quickInputMod');
+  setTimeout(function(){ var el=document.getElementById('qiInput'); if(el){el.focus();el.select();} }, 100);
+  // Enter يحفظ
+  setTimeout(function(){
+    var el=document.getElementById('qiInput');
+    if(el&&type!=='textarea') el.addEventListener('keydown',function(e){if(e.key==='Enter')qiConfirm();});
+  }, 110);
+}
+
+function qiConfirm(){
+  var el = document.getElementById('qiInput');
+  if(!el) return;
+  var val = el.value;
+  closeMod('quickInputMod');
+  if(_qiCallback) _qiCallback(val);
+  _qiCallback = null;
+}
+
+function qiCancel(){
+  closeMod('quickInputMod');
+  _qiCallback = null;
+}
+
+// ── وصف الشحنة ──
 async function editShipDesc(shipId, currentDesc){
-  var desc = prompt('وصف الشحنة:', currentDesc||'');
-  if(desc===null) return;
-  await sbPatch('/rest/v1/shipments?id=eq.'+shipId, {description: desc, updated_at: new Date().toISOString()});
-  toast('✅ تم حفظ الوصف');
-  loadShipments();
+  quickInput({
+    title: 'تعديل وصف الشحنة',
+    label: 'وصف المنتجات المشحونة (يظهر في بوليصة Bosta)',
+    defaultVal: currentDesc||'',
+    type: 'text',
+    confirmLabel: '✅ حفظ الوصف',
+    onConfirm: async function(desc){
+      if(!desc&&desc!=='') return;
+      await sbPatch('/rest/v1/shipments?id=eq.'+shipId,{description:desc.trim(),updated_at:new Date().toISOString()});
+      toast('✅ تم حفظ الوصف');
+      loadShipments();
+    }
+  });
 }
 
 // ═══ PRODUCTS ═══
@@ -6156,6 +6339,14 @@ document.addEventListener('click',e=>{if(!e.target.closest('.pw'))document.query
 // ════ v10 FEATURES ════
 
 function go(id,el){
+  // ── فحص الصلاحية قبل الانتقال ──
+  if(_userPerms!==null){  // مش admin
+    var reqPerm=PAGE_PERMS[id];
+    if(reqPerm&&!hasPerm(reqPerm)){
+      toast('⛔ غير مصرح — هذه الصفحة تحتاج صلاحية: '+reqPerm,'err');
+      return;
+    }
+  }
   closeAllMods();
   document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on');});
   var pg=document.getElementById(id);
@@ -6472,11 +6663,18 @@ function onPhoneInput(el){
 // F10: Inline Note
 async function saveInlineNote(orderId){
   var o=(oData||[]).find(function(x){return x.id===orderId;});
-  var note=prompt('ملاحظة داخلية:',o?o.notes_internal||'':'');
-  if(note===null)return;
-  await sbPatch('/rest/v1/orders?id=eq.'+orderId,{notes_internal:note.trim()||null,updated_at:new Date().toISOString()});
-  toast('تم حفظ الملاحظة');
-  loadOrders();
+  quickInput({
+    title: 'ملاحظة داخلية',
+    label: 'ملاحظة للفريق (لا تظهر للعميل)',
+    defaultVal: o?o.notes_internal||'':'',
+    type: 'textarea',
+    confirmLabel: '💾 حفظ الملاحظة',
+    onConfirm: async function(note){
+      await sbPatch('/rest/v1/orders?id=eq.'+orderId,{notes_internal:note.trim()||null,updated_at:new Date().toISOString()});
+      toast('✅ تم حفظ الملاحظة');
+      loadOrders();
+    }
+  });
 }
 
 // F11: Dashboard Refresh
@@ -6858,27 +7056,47 @@ async function recordWsPayment(){
 }
 
 async function quickWsPayment(custId,custName,balance){
-  var amount=parseFloat(prompt('دفعة من عميل: '+custName+'\nالرصيد المستحق: '+fmt(balance)+' ج\n\nالمبلغ المدفوع:'))||0;
-  if(!amount)return;
-  await sbPost('/rest/v1/wholesale_payments',{
-    ws_customer_id:custId,amount:amount,
-    payment_method:'cash',payment_date:new Date().toISOString().slice(0,10)
+  quickInput({
+    title: 'تسجيل دفعة جملة',
+    label: 'المبلغ المدفوع (ج)',
+    hint: 'العميل: '+custName+' | الرصيد المستحق: '+fmt(balance)+' ج',
+    defaultVal: '',
+    type: 'number',
+    confirmLabel: '💰 تسجيل الدفعة',
+    onConfirm: async function(val){
+      var amount=parseFloat(val)||0;
+      if(!amount){toast('أدخل المبلغ','err');return;}
+      await sbPost('/rest/v1/wholesale_payments',{
+        ws_customer_id:custId,amount:amount,
+        payment_method:'cash',payment_date:new Date().toISOString().slice(0,10)
+      });
+      toast('✅ تسجيل دفعة '+fmt(amount)+' ج');
+      loadWholesale();
+      if(wsActiveCustomer===custId)loadWsCustomerDetail(custId);
+    }
   });
-  toast('✅ تسجيل دفعة '+fmt(amount)+' ج');
-  loadWholesale();
-  if(wsActiveCustomer===custId)loadWsCustomerDetail(custId);
 }
 
 async function quickWsPaymentForOrder(custId,orderId,remaining,custName){
-  var amount=parseFloat(prompt('سداد أوردر — '+custName+'\nالمبلغ المتبقي: '+fmt(remaining)+' ج\n\nالمبلغ المدفوع:',remaining))||0;
-  if(!amount)return;
-  await sbPost('/rest/v1/wholesale_payments',{
-    ws_customer_id:custId,order_id:orderId,amount:amount,
-    payment_method:'cash',payment_date:new Date().toISOString().slice(0,10)
+  quickInput({
+    title: 'سداد أوردر جملة',
+    label: 'المبلغ المدفوع (ج)',
+    hint: 'العميل: '+custName+' | المبلغ المتبقي: '+fmt(remaining)+' ج',
+    defaultVal: remaining,
+    type: 'number',
+    confirmLabel: '💰 تسجيل السداد',
+    onConfirm: async function(val){
+      var amount=parseFloat(val)||0;
+      if(!amount){toast('أدخل المبلغ','err');return;}
+      await sbPost('/rest/v1/wholesale_payments',{
+        ws_customer_id:custId,order_id:orderId,amount:amount,
+        payment_method:'cash',payment_date:new Date().toISOString().slice(0,10)
+      });
+      toast('✅ تسجيل دفعة '+fmt(amount)+' ج');
+      loadWholesale();
+      loadWsCustomerDetail(custId);
+    }
   });
-  toast('✅ تسجيل دفعة '+fmt(amount)+' ج');
-  loadWholesale();
-  loadWsCustomerDetail(custId);
 }
 
 async function loadCustomerOpenOrders(){
