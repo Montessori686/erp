@@ -370,6 +370,12 @@ optgroup{font-size:11px;font-weight:700;color:var(--t3);}
 
 
 /* ═══ TABLET ≤1024px ═══ */
+/* ─── moreSheet: مخفي على كل الشاشات — يظهر فقط بـ JS (openMore) ─── */
+#moreSheet{display:none;}
+#moreSheet.show{display:block;}
+#moreOv{display:none;}
+#moreOv.show{display:block;}
+
 @media(max-width:1024px){
   .sb{width:220px;}
   .main{margin-right:220px;}
@@ -1977,6 +1983,8 @@ th.sortable{
       <button class="btn btn-p btn-sm" onclick="newProdModal()">+ جديد</button>
     </div>
   </div>
+  <!-- تحذير فجوات التسلسل -->
+  <div id="skuGapsWarn" style="display:none;align-items:center;gap:8px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);border-radius:var(--r);padding:8px 13px;margin-bottom:10px;font-size:12px;color:var(--amber);flex-wrap:wrap"></div>
   <div class="fb">
     <input type="search" id="fPS" placeholder="بحث بالاسم أو SKU..." oninput="filterProducts()">
     <select id="fPC" onchange="filterProducts()"><option value="">كل التصنيفات</option><option value="منتسوري">Montessori</option><option value="بازل Puzzle">Puzzle</option><option value="Newborn zone">Newborn</option><option value="الكروت والألعاب الجماعية">الكروت</option><option value="العاب الاطفال">ألعاب</option><option value="رسم و تلوين">رسم</option><option value="Fidget toys">Fidget</option><option value="كتب و قصص للأطفال">كتب</option></select>
@@ -3824,7 +3832,40 @@ async function loadProducts(){
     });
   }
   filterProducts();
+  // ── فحص الفجوات في التسلسل (تحذير مرئي) ──
+  checkSkuGaps();
 }
+
+function checkSkuGaps(){
+  try{
+    var nums = pData
+      .map(function(p){ return (p.sku||'').trim().toUpperCase(); })
+      .filter(function(s){ return /^P\d+$/.test(s); })
+      .map(function(s){ return parseInt(s.slice(1)); })
+      .filter(function(n){ return !isNaN(n)&&n>0; })
+      .sort(function(a,b){return a-b;});
+    if(nums.length<2) return;
+    var gaps=[];
+    for(var i=1;i<nums.length;i++){
+      if(nums[i]-nums[i-1]>1){
+        for(var g=nums[i-1]+1;g<nums[i];g++){
+          gaps.push('P'+String(g).padStart(3,'0'));
+        }
+      }
+    }
+    var warnEl=document.getElementById('skuGapsWarn');
+    if(!warnEl) return;
+    if(gaps.length){
+      warnEl.style.display='flex';
+      warnEl.innerHTML='⚠️ فجوات في التسلسل — كودات محذوفة: <strong style="margin-right:6px">'
+        +gaps.join(', ')+'</strong>'
+        +' <span style="font-size:11px;color:var(--t3);margin-right:auto">(سيبدأ الكود الجديد من P'+String(Math.max.apply(null,nums)+1).padStart(3,'0')+')</span>';
+    }else{
+      warnEl.style.display='none';
+    }
+  }catch(e){}
+}
+
 function filterProducts(){
   const q=document.getElementById('fPS').value.toLowerCase(),
         cat=document.getElementById('fPC').value,
@@ -3874,8 +3915,29 @@ function filterProducts(){
 function _setVal(id, v){ var el = document.getElementById(id); if(el) el.value = (v==null||v===undefined) ? '' : v; }
 function _setTxt(id, v){ var el = document.getElementById(id); if(el) el.textContent = v||''; }
 
-// ── فتح Modal منتج جديد (تصفير كامل) ──
-function newProdModal(){
+// ── توليد SKU التسلسلي التالي ──
+async function genNextSku(){
+  try{
+    // جيب كل الـ SKUs المتطابقة مع نمط P[أرقام]
+    var prods = await sbGet('/rest/v1/products?select=sku&order=sku');
+    var nums = (prods||[])
+      .map(function(p){ return (p.sku||'').trim().toUpperCase(); })
+      .filter(function(s){ return /^P\d+$/.test(s); })
+      .map(function(s){ return parseInt(s.slice(1)); })
+      .filter(function(n){ return !isNaN(n) && n>0; });
+    if(!nums.length) return 'P001';
+    var maxNum = Math.max.apply(null, nums);
+    var next   = maxNum + 1;
+    // وجد فجوات؟ نبلغ لكن نستمر من آخر رقم (لا نعيد استخدام المحذوفة)
+    return 'P' + String(next).padStart(3,'0');
+  }catch(e){
+    console.error('genNextSku:',e);
+    return '';
+  }
+}
+
+// ── فتح Modal منتج جديد (تصفير كامل + SKU أوتوماتيك) ──
+async function newProdModal(){
   try{
     _setTxt('pmT','منتج جديد');
     // تصفير كل الحقول
@@ -3883,7 +3945,7 @@ function newProdModal(){
                 'pmT1q','pmT1p','pmT2q','pmT2p','pmT3q','pmT3p'];
     fields.forEach(function(id){ _setVal(id,''); });
     _setVal('pmPrice',0); _setVal('pmCost',0); _setVal('pmWs',0); _setVal('pmMin',5);
-    // تصفير الـ eid (مهم جداً — لو بقي من تعديل سابق → هيعمل PATCH بدل POST)
+    // تصفير الـ eid
     var skuEl=document.getElementById('pmSku');
     if(skuEl) skuEl.dataset.eid='';
     // تصفير الصورة
@@ -3891,10 +3953,17 @@ function newProdModal(){
     if(imgEl) imgEl.value='';
     var imgPrv=document.getElementById('pmImgPrv');
     if(imgPrv) imgPrv.style.display='none';
-    // تصفير القائمة المنسدلة للتصنيف والمورد
+    // تصفير التصنيف والمورد
     _setVal('pmCat','');
     _setVal('pmSup','');
+    // ← توليد SKU التالي أوتوماتيك
+    _setTxt('pmT','منتج جديد ⏳ جاري توليد الكود...');
+    var nextSku = await genNextSku();
+    _setVal('pmSku', nextSku);
+    _setTxt('pmT','منتج جديد');
     openMod('prodMod');
+    // Focus على حقل الاسم (SKU جاهز)
+    setTimeout(function(){ var n=document.getElementById('pmName'); if(n) n.focus(); },150);
   }catch(err){
     console.error('newProdModal:',err);
     toast('تعذّر فتح نافذة المنتج: '+(err.message||err),'err');
@@ -3966,7 +4035,21 @@ async function editProd(id){
 }
 
 function prevProdImg(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{document.getElementById('pmImgShow').src=e.target.result;document.getElementById('pmImgPrv').style.display='block';};r.readAsDataURL(f);}
-async function saveProd(){const sku=document.getElementById('pmSku').value.trim(),name=document.getElementById('pmName').value.trim();const nameEn=document.getElementById('pmNameEn').value,price=parseFloat(document.getElementById('pmPrice').value)||0;const cat=document.getElementById('pmCat').value,minS=parseInt(document.getElementById('pmMin').value)||5;const cost=parseFloat(document.getElementById('pmCost').value)||0,ws=parseFloat(document.getElementById('pmWs').value)||0;const supId=document.getElementById('pmSup').value||null,id=document.getElementById('pmSku').dataset.eid;if(!sku||!name){toast('أدخل SKU واسم المنتج','err');return;}let imgUrl=null;const imgFile=document.getElementById('pmImg').files[0];if(imgFile){const ext=imgFile.name.split('.').pop();const path=`products/${sku.replace(/[^a-zA-Z0-9]/g,'_')}_${Date.now()}.${ext}`;const{data:upData,error:upErr}=await sb.storage.from('product-images').upload(path,imgFile,{upsert:true});if(!upErr){const{data:{publicUrl}}=sb.storage.from('product-images').getPublicUrl(path);imgUrl=publicUrl;}}const t1q=parseInt(document.getElementById('pmT1q').value)||null;
+async function saveProd(){
+  const sku=document.getElementById('pmSku').value.trim(),name=document.getElementById('pmName').value.trim();
+  const nameEn=document.getElementById('pmNameEn').value,price=parseFloat(document.getElementById('pmPrice').value)||0;
+  const cat=document.getElementById('pmCat').value,minS=parseInt(document.getElementById('pmMin').value)||5;
+  const cost=parseFloat(document.getElementById('pmCost').value)||0,ws=parseFloat(document.getElementById('pmWs').value)||0;
+  const supId=document.getElementById('pmSup').value||null,id=document.getElementById('pmSku').dataset.eid;
+  if(!sku||!name){toast('أدخل SKU واسم المنتج','err');return;}
+  // ── فحص تكرار الـ SKU (فقط عند الإضافة وليس التعديل) ──
+  if(!id){
+    var existing=await sbGet('/rest/v1/products?sku=eq.'+encodeURIComponent(sku)+'&select=id&limit=1');
+    if(existing&&existing.length){
+      toast('⚠️ الكود "'+sku+'" موجود بالفعل — اختر كوداً مختلفاً','err');
+      return;
+    }
+  }let imgUrl=null;const imgFile=document.getElementById('pmImg').files[0];if(imgFile){const ext=imgFile.name.split('.').pop();const path=`products/${sku.replace(/[^a-zA-Z0-9]/g,'_')}_${Date.now()}.${ext}`;const{data:upData,error:upErr}=await sb.storage.from('product-images').upload(path,imgFile,{upsert:true});if(!upErr){const{data:{publicUrl}}=sb.storage.from('product-images').getPublicUrl(path);imgUrl=publicUrl;}}const t1q=parseInt(document.getElementById('pmT1q').value)||null;
     const t1p=parseFloat(document.getElementById('pmT1p').value)||null;
     const t2q=parseInt(document.getElementById('pmT2q').value)||null;
     const t2p=parseFloat(document.getElementById('pmT2p').value)||null;
