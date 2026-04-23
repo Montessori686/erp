@@ -1875,7 +1875,7 @@ th.sortable{
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn btn-export btn-sm" onclick="exportProductsPDF()">📄 PDF</button>
       <button class="btn btn-export btn-sm" onclick="exportProductsCSV()">📥 CSV</button>
-      <button class="btn btn-p btn-sm" onclick="openMod('prodMod')">+ جديد</button>
+      <button class="btn btn-p btn-sm" onclick="newProdModal()">+ جديد</button>
     </div>
   </div>
   <div class="fb">
@@ -2723,6 +2723,28 @@ th.sortable{
   <div class="mo-f"><button class="btn btn-gh" onclick="closeMod('poMod')">إلغاء</button><button class="btn btn-p" onclick="savePO()">💾 حفظ</button></div>
 </div></div>
 
+<!-- ══ MODAL: استلام بضاعة من PO ══ -->
+<div class="mo" id="poReceiveMod" style="display:none" aria-hidden="true">
+  <div class="modal wide">
+    <div class="mo-h">
+      <div class="mo-t" id="poReceiveTitle">📦 استلام بضاعة</div>
+      <button class="mo-x" onclick="closeMod('poReceiveMod')">✕</button>
+    </div>
+    <div class="mo-b">
+      <div style="background:var(--acc-bg);border:1px solid var(--acc-bd);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--t2)">
+        سيتم تسجيل البضاعة المستلمة وإضافتها للمخزون تلقائياً
+      </div>
+      <!-- صفوف المنتجات المستلمة -->
+      <div id="poReceiveItems"></div>
+      <button class="btn btn-gh btn-sm" style="margin-top:8px" onclick="addPoReceiveRow()">+ إضافة منتج</button>
+    </div>
+    <div class="mo-f">
+      <button class="btn btn-gh" onclick="closeMod('poReceiveMod')">إلغاء</button>
+      <button class="btn btn-p" onclick="savePoReceive()">📦 تسجيل الاستلام</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -3106,6 +3128,7 @@ function filterOrders(){
         ${o.status==='pending'?`<button class="btn btn-gh btn-sm" style="color:#34D399;border-color:rgba(52,211,153,.2)" onclick="openConfMod(${o.id},'${o.order_code}','${(o.customer_name||'عميل').replace(/'/g,"\\'")}',${o.total_after})">✅</button>`:''}
         ${o.status==='confirmed'?(o.shipments&&o.shipments[0]?.tracking_id?`<span class="b b-sky mono" style="font-size:10px">${o.shipments[0].tracking_id}</span>`:`<button class="btn btn-ship btn-sm" onclick="openShipMod(${o.id})">🚚</button>`):''}
         ${o.status==='shipped'&&o.shipments?.[0]?.tracking_id?`<a href="https://bosta.co/tracking-shipment/${o.shipments[0].tracking_id}" target="_blank" class="btn btn-tl btn-sm">🔗</a>`:''}
+        ${(o.status==='confirmed'||o.status==='shipped'||o.status==='delivered')?`<button class="btn btn-rd btn-sm" onclick="returnOrder(${o.id},'${o.order_code}','${(o.customer_name||'').replace(/'/g,"\\'")}',${parseFloat(o.total_after)||0})" title="تسجيل مرتجع">↩ مرتجع</button>`:''}
       </td>
     </tr>`)
   ,{cbKey:'id',tableId:'orders_tbl'});
@@ -3209,6 +3232,63 @@ async function saveOrderEdit(id){const n=document.getElementById('edN')?.value,p
 // ═══ CONFIRM ═══
 function openConfMod(id,code,name,total){confId=id;document.getElementById('confDet').innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px"><div><span style="color:var(--t2)">الكود: </span><span class="mono fw7">${code}</span></div><div><span style="color:var(--t2)">العميل: </span><span class="fw7">${name}</span></div><div style="grid-column:1/-1"><span style="color:var(--t2)">الإجمالي: </span><span class="fw7 tg" style="font-size:16px">${fmt(total)} ج</span></div></div>`;openMod('confMod');}
 async function execConfirm(){if(!confId)return;sbPatch(`/rest/v1/orders?id=eq.${confId}`,{status:'confirmed',confirmed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).then(function(){toast('✅ تم تأكيد الأوردر');closeMod('confMod');loadOrders();updPBadge();});}
+
+// ═══ RETURN ORDER — مرتجع ═══
+async function returnOrder(orderId, orderCode, customerName, totalAfter){
+  var msg = 'تسجيل مرتجع للأوردر ' + orderCode + '\n'
+          + 'العميل: ' + (customerName||'—') + '\n'
+          + 'المبلغ: ' + fmt(totalAfter) + ' ج\n\n'
+          + '⚠️ سيتم:\n'
+          + '• تغيير الحالة إلى "مرتجع"\n'
+          + '• إعادة المخزون تلقائياً\n\n'
+          + 'هل تريد المتابعة؟';
+  if(!confirm(msg)) return;
+
+  try {
+    // 1. تحديث حالة الأوردر
+    await sbPatch('/rest/v1/orders?id=eq.'+orderId, {
+      status: 'returned',
+      updated_at: new Date().toISOString()
+    });
+
+    // 2. جيب order_items لإعادة المخزون
+    var items = await sbGet('/rest/v1/order_items?order_id=eq.'+orderId+'&select=product_id,quantity');
+
+    // 3. إعادة المخزون لكل منتج
+    var restored = 0;
+    if(items && items.length){
+      for(var i=0;i<items.length;i++){
+        var item = items[i];
+        if(!item.product_id || !item.quantity) continue;
+        // POST إلى inventory_movements (type=in) — الـ trigger يحدّث inventory
+        await sbPost('/rest/v1/inventory_movements', {
+          product_id: item.product_id,
+          type: 'in',
+          quantity: item.quantity,
+          reason: 'مرتجع — ' + orderCode
+        });
+        restored++;
+      }
+    }
+
+    // 4. تسجيل في Timeline
+    try {
+      await sbPost('/rest/v1/order_timeline', {
+        order_id: orderId,
+        event: 'returned',
+        details: 'تم تسجيل المرتجع. أعيد ' + restored + ' منتج للمخزون.'
+      });
+    } catch(tlErr){ console.warn('timeline insert failed:', tlErr); }
+
+    toast('↩ تم تسجيل المرتجع — أُعيد ' + restored + ' منتج للمخزون');
+    loadOrders();
+    if(typeof loadInventory === 'function') loadInventory();
+
+  } catch(err){
+    console.error('returnOrder:', err);
+    toast('❌ خطأ في تسجيل المرتجع: ' + (err.message||err), 'err');
+  }
+}
 
 // ═══ SHIPPING v8 — city+firstLine لكل مصر ═══
 let _govCache = null;
@@ -3670,6 +3750,33 @@ function filterProducts(){
 function _setVal(id, v){ var el = document.getElementById(id); if(el) el.value = (v==null||v===undefined) ? '' : v; }
 function _setTxt(id, v){ var el = document.getElementById(id); if(el) el.textContent = v||''; }
 
+// ── فتح Modal منتج جديد (تصفير كامل) ──
+function newProdModal(){
+  try{
+    _setTxt('pmT','منتج جديد');
+    // تصفير كل الحقول
+    var fields=['pmSku','pmName','pmNameEn','pmPrice','pmCost','pmWs','pmMin',
+                'pmT1q','pmT1p','pmT2q','pmT2p','pmT3q','pmT3p'];
+    fields.forEach(function(id){ _setVal(id,''); });
+    _setVal('pmPrice',0); _setVal('pmCost',0); _setVal('pmWs',0); _setVal('pmMin',5);
+    // تصفير الـ eid (مهم جداً — لو بقي من تعديل سابق → هيعمل PATCH بدل POST)
+    var skuEl=document.getElementById('pmSku');
+    if(skuEl) skuEl.dataset.eid='';
+    // تصفير الصورة
+    var imgEl=document.getElementById('pmImg');
+    if(imgEl) imgEl.value='';
+    var imgPrv=document.getElementById('pmImgPrv');
+    if(imgPrv) imgPrv.style.display='none';
+    // تصفير القائمة المنسدلة للتصنيف والمورد
+    _setVal('pmCat','');
+    _setVal('pmSup','');
+    openMod('prodMod');
+  }catch(err){
+    console.error('newProdModal:',err);
+    toast('تعذّر فتح نافذة المنتج: '+(err.message||err),'err');
+  }
+}
+
 async function editProd(id){
   try {
     id = parseInt(id);
@@ -3742,7 +3849,29 @@ async function saveProd(){const sku=document.getElementById('pmSku').value.trim(
     const t3q=parseInt(document.getElementById('pmT3q').value)||null;
     const t3p=parseFloat(document.getElementById('pmT3p').value)||null;
     const payload={sku,name,name_en:nameEn||null,base_price:price,cost_price:cost,wholesale_price:ws||null,category:cat||null,min_stock:minS,supplier_id:supId?parseInt(supId):null,
-      ws_tier1_qty:t1q,ws_tier1_pct:t1p,ws_tier2_qty:t2q,ws_tier2_pct:t2p,ws_tier3_qty:t3q,ws_tier3_pct:t3p};if(imgUrl)payload.image_url=imgUrl;if(id){await sbPatch(`/rest/v1/products?id=eq.${id}`,payload);}else{await sbPost('/rest/v1/products',payload);}toast('✅ تم حفظ المنتج');closeMod('prodMod');document.getElementById('pmSku').dataset.eid='';document.getElementById('pmImg').value='';loadProducts();}
+      ws_tier1_qty:t1q,ws_tier1_pct:t1p,ws_tier2_qty:t2q,ws_tier2_pct:t2p,ws_tier3_qty:t3q,ws_tier3_pct:t3p};if(imgUrl)payload.image_url=imgUrl;
+    if(id){
+      await sbPatch(`/rest/v1/products?id=eq.${id}`,payload);
+      toast('✅ تم تعديل المنتج');
+    }else{
+      // إنشاء منتج جديد
+      var created = await sbPost('/rest/v1/products',payload);
+      // إنشاء صف inventory تلقائياً لو مفيش
+      if(created && created[0] && created[0].id){
+        var newId = created[0].id;
+        var existing = await sbGet('/rest/v1/inventory?product_id=eq.'+newId+'&limit=1');
+        if(!existing || !existing.length){
+          await sbPost('/rest/v1/inventory',{product_id:newId,stock_qty:0});
+        }
+      }
+      toast('✅ تم إضافة المنتج');
+    }
+    closeMod('prodMod');
+    var skuEl2=document.getElementById('pmSku');
+    if(skuEl2) skuEl2.dataset.eid='';
+    var imgEl2=document.getElementById('pmImg');
+    if(imgEl2) imgEl2.value='';
+    loadProducts();}
 
 // ═══ INVENTORY ═══
 async function loadInventory(){invData=await sbGet('/rest/v1/inventory?select=*,products(sku,name,category,min_stock,cost_price,base_price,image_url)&order=product_id');const totCost=invData.reduce((s,i)=>s+(i.stock_qty||0)*parseFloat(i.products?.cost_price||0),0);const totRet=invData.reduce((s,i)=>s+(i.stock_qty||0)*parseFloat(i.products?.base_price||0),0);const low=invData.filter(i=>i.stock_qty<=(i.products?.min_stock||minStk)).length;document.getElementById('invTotal').textContent=fmt(totCost)+' ج';document.getElementById('invRetail').textContent=fmt(totRet)+' ج';document.getElementById('invLow').textContent=low+' منتج';filterInventory();}
@@ -3818,11 +3947,83 @@ async function loadFinancial(){
 
 // ═══ PURCHASES ═══
 async function loadPurchases(){poData=await sbGet('/rest/v1/purchase_orders?select=*,suppliers(name)&order=id.desc');filterPO();}
-function filterPO(){const q=document.getElementById('fPoS').value.toLowerCase(),st=document.getElementById('fPoSt').value,f=document.getElementById('fPoF').value,t=document.getElementById('fPoT').value;const d=poData.filter(p=>{if(q&&!p.po_code?.toLowerCase().includes(q)&&!p.suppliers?.name?.toLowerCase().includes(q))return false;if(st&&p.status!==st)return false;if(!inR(p.created_at,f,t))return false;return true;});document.getElementById('fPoCnt').textContent=d.length+' فاتورة';document.getElementById('poC').innerHTML=buildTbl(['رقم الفاتورة','المورد','الإجمالي','المدفوع','المتبقي','الحالة','التاريخ'],d.map(p=>`<tr>
-      ${mkCB(p.id,'purchases_tbl')}<td class="mono fw7">${p.po_code||'—'}</td><td class="fw7">${p.suppliers?.name||'—'}</td><td class="fw7">${fmt(p.total_amount)} ج</td><td class="tg">${fmt(p.paid_amount)} ج</td><td class="fw7 ${parseFloat(p.remaining_amount||0)>0?'tr':'tg'}">${fmt(p.remaining_amount)} ج</td><td>${({pending:'<span class="b b-am">معلقة</span>',partial:'<span class="b b-sky">جزئي</span>',paid:'<span class="b b-gr">مدفوعة</span>'}[p.status]||`<span class="b b-gy">${p.status}</span>`)}</td><td style="font-size:11px;color:var(--t3)">${fmtD(p.created_at)}</td></tr>`),{cbKey:'id',tableId:'purchases_tbl'});
+function filterPO(){const q=document.getElementById('fPoS').value.toLowerCase(),st=document.getElementById('fPoSt').value,f=document.getElementById('fPoF').value,t=document.getElementById('fPoT').value;const d=poData.filter(p=>{if(q&&!p.po_code?.toLowerCase().includes(q)&&!p.suppliers?.name?.toLowerCase().includes(q))return false;if(st&&p.status!==st)return false;if(!inR(p.created_at,f,t))return false;return true;});document.getElementById('fPoCnt').textContent=d.length+' فاتورة';document.getElementById('poC').innerHTML=buildTbl(['رقم الفاتورة','المورد','الإجمالي','المدفوع','المتبقي','الحالة','التاريخ','إجراءات'],d.map(p=>`<tr>
+      ${mkCB(p.id,'purchases_tbl')}<td class="mono fw7">${p.po_code||'—'}</td><td class="fw7">${p.suppliers?.name||'—'}</td><td class="fw7">${fmt(p.total_amount)} ج</td><td class="tg">${fmt(p.paid_amount)} ج</td><td class="fw7 ${parseFloat(p.remaining_amount||0)>0?'tr':'tg'}">${fmt(p.remaining_amount)} ج</td><td>${({pending:'<span class="b b-am">معلقة</span>',partial:'<span class="b b-sky">جزئي</span>',paid:'<span class="b b-gr">مدفوعة</span>'}[p.status]||`<span class="b b-gy">${p.status}</span>`)}</td><td style="font-size:11px;color:var(--t3)">${fmtD(p.created_at)}</td><td><button class="btn btn-g btn-sm" onclick="openPoReceive(${p.id},'${(p.po_code||'').replace(/'/g,"\\'")}')">📦 استلام</button></td></tr>`),{cbKey:'id',tableId:'purchases_tbl'});
   dtApply('purchases_tbl');
 }
 async function savePO(){const sup=document.getElementById('poSup').value,tot=parseFloat(document.getElementById('poTot').value)||0,paid=parseFloat(document.getElementById('poPaid').value)||0,st=document.getElementById('poSt').value,note=document.getElementById('poNote').value;if(!sup||!tot){toast('اختر المورد وأدخل الإجمالي','err');return;}await sbPost('/rest/v1/purchase_orders',{po_code:'PO-'+Date.now(),supplier_id:parseInt(sup),total_amount:tot,paid_amount:paid,status:st,notes:note});toast('✅ تم إضافة الفاتورة');closeMod('poMod');loadPurchases();}
+
+// ═══ PO RECEIVE — استلام بضاعة من فاتورة شراء ═══
+var _poReceiveId = null;
+var _poReceiveCode = '';
+
+function openPoReceive(poId, poCode){
+  _poReceiveId = poId;
+  _poReceiveCode = poCode;
+  _setTxt('poReceiveTitle', '📦 استلام بضاعة — ' + poCode);
+  // أول صف تلقائي
+  document.getElementById('poReceiveItems').innerHTML = '';
+  addPoReceiveRow();
+  openMod('poReceiveMod');
+}
+
+function addPoReceiveRow(){
+  var container = document.getElementById('poReceiveItems');
+  if(!container) return;
+  var rowId = 'por_' + Date.now();
+  // بناء قائمة المنتجات من pData
+  var opts = (pData||[]).map(function(p){
+    return '<option value="'+p.id+'" data-name="'+p.name+'" data-sku="'+p.sku+'">'+p.sku+' — '+p.name+'</option>';
+  }).join('');
+  var row = document.createElement('div');
+  row.id = rowId;
+  row.style.cssText = 'display:grid;grid-template-columns:3fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;';
+  row.innerHTML = '<select class="por-prod"><option value="">اختر المنتج...</option>'+opts+'</select>'
+    + '<input type="number" class="por-qty" placeholder="الكمية" min="1" value="1" style="padding:7px 8px;font-size:12px">'
+    + '<button class="btn btn-rd btn-sm" onclick="this.closest(\'div\').remove()">✕</button>';
+  container.appendChild(row);
+}
+
+async function savePoReceive(){
+  var container = document.getElementById('poReceiveItems');
+  if(!container){ toast('خطأ: لا توجد بيانات','err'); return; }
+  var rows = container.querySelectorAll('div[id^="por_"]');
+  if(!rows.length){ toast('أضف منتجاً واحداً على الأقل','err'); return; }
+
+  var items = [];
+  var hasError = false;
+  rows.forEach(function(row){
+    var prodSel = row.querySelector('.por-prod');
+    var qtyInp  = row.querySelector('.por-qty');
+    var prodId  = prodSel ? parseInt(prodSel.value) : 0;
+    var qty     = qtyInp ? parseInt(qtyInp.value) : 0;
+    if(!prodId || !qty || qty <= 0){ hasError = true; return; }
+    items.push({product_id: prodId, quantity: qty});
+  });
+
+  if(hasError){ toast('تأكد من اختيار المنتج وإدخال الكمية لكل صف','err'); return; }
+  if(!items.length){ toast('لا توجد منتجات للاستلام','err'); return; }
+
+  try {
+    var saved = 0;
+    for(var i=0;i<items.length;i++){
+      await sbPost('/rest/v1/inventory_movements', {
+        product_id: items[i].product_id,
+        type: 'in',
+        quantity: items[i].quantity,
+        reason: 'استلام بضاعة — ' + _poReceiveCode
+      });
+      saved++;
+    }
+    toast('✅ تم تسجيل استلام ' + saved + ' منتج في المخزون');
+    closeMod('poReceiveMod');
+    if(typeof loadInventory === 'function') loadInventory();
+    if(typeof loadMovements === 'function') loadMovements();
+  } catch(err){
+    console.error('savePoReceive:', err);
+    toast('❌ خطأ في تسجيل الاستلام: ' + (err.message||err), 'err');
+  }
+}
 
 // ═══ SUPPLIERS ═══
 async function loadSuppliers(){supData=await sbGet('/rest/v1/suppliers?select=*&order=name');document.getElementById('poSup').innerHTML='<option value="">اختر مورد...</option>'+supData.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');filterSuppliers();}
@@ -5765,9 +5966,10 @@ function dtUpdateHeaders(tableId){
   var tbl = document.getElementById(tableId);
   if(!tbl) return;
   var s = _dtState[tableId];
-  tbl.querySelectorAll('th.sortable').forEach(function(th,i){
+  tbl.querySelectorAll('th.sortable').forEach(function(th){
     th.classList.remove('sort-asc','sort-desc');
-    if(i === s.sortCol){
+    // نستخدم data-col-idx المحفوظ لمطابقة صحيحة مع sortCol
+    if(parseInt(th.dataset.colIdx) === s.sortCol){
       th.classList.add(s.sortDir==='asc'?'sort-asc':'sort-desc');
     }
   });
@@ -5782,6 +5984,7 @@ function dtMakeSortable(tableId){
     // تخطى checkbox column
     if(th.classList.contains('th-cb')) return;
     th.classList.add('sortable');
+    th.dataset.colIdx = i; // ← نحفظ الـ index الحقيقي (شامل cb)
     th.onclick = function(){ dtSort(tableId, i); };
   });
 }
@@ -6175,39 +6378,67 @@ function printCatalog(){
     return;
   }
 
+  var catTitle = document.getElementById('catTitle')?.value || 'كتالوج الجملة';
+  // CSS الكتالوج مباشرةً (بدل نسخ من style tag اللي بيتقطع)
+  var catCSS = [
+    '*{margin:0;padding:0;box-sizing:border-box}',
+    "body{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1a1a1a;padding:20px}",
+    '#catalogPreview{background:#fff;color:#1a1a1a;font-family:\'Cairo\',sans-serif;direction:rtl;}',
+    '.cat-doc{max-width:900px;margin:0 auto;padding:28px 32px;}',
+    '.cat-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:18px;border-bottom:3px solid #1a3a6c;margin-bottom:20px;}',
+    '.cat-logo-area{display:flex;align-items:center;gap:14px;}',
+    '.cat-logo-box{width:52px;height:52px;border-radius:10px;background:#1a3a6c;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff;overflow:hidden;flex-shrink:0;}',
+    '.cat-logo-box img{width:100%;height:100%;object-fit:cover;border-radius:9px;}',
+    '.cat-company{font-size:20px;font-weight:900;color:#1a3a6c;}',
+    '.cat-subtitle{font-size:12px;color:#666;margin-top:2px;}',
+    '.cat-meta{text-align:left;font-size:11px;color:#888;line-height:1.8;}',
+    '.cat-meta strong{color:#1a3a6c;}',
+    '.cat-title-bar{background:#1a3a6c;color:#fff;text-align:center;padding:10px 20px;border-radius:8px;margin-bottom:16px;font-size:16px;font-weight:700;letter-spacing:.03em;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '.cat-note{background:#f0f4ff;border:1px solid #c8d8f8;border-radius:6px;padding:8px 14px;font-size:11px;color:#1a3a6c;margin-bottom:16px;display:flex;gap:8px;align-items:center;}',
+    '.cat-tiers-legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}',
+    '.cat-tier-badge{padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px;}',
+    '.cat-t1{background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;}',
+    '.cat-t2{background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;}',
+    '.cat-t3{background:#fce4ec;color:#c62828;border:1px solid #f48fb1;}',
+    '.cat-tbase{background:#f5f5f5;color:#555;border:1px solid #ddd;}',
+    '.cat-table{width:100%;border-collapse:collapse;font-size:12px;}',
+    '.cat-table thead tr{background:#1a3a6c;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '.cat-table thead th{padding:9px 10px;font-weight:700;text-align:right;font-size:11px;letter-spacing:.03em;}',
+    '.cat-table tbody tr:nth-child(even){background:#f8faff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '.cat-table td{padding:8px 10px;border-bottom:1px solid #eee;vertical-align:middle;}',
+    '.cat-table td.sku{font-family:monospace;color:#666;font-size:10px;}',
+    '.cat-table td.pname{font-weight:700;color:#1a1a1a;}',
+    '.cat-table td.price{font-weight:700;text-align:center;}',
+    '.cat-table td.base-price{color:#1a3a6c;font-size:13px;}',
+    '.cat-table td.t1-price{color:#2e7d32;background:#f1f8f1;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '.cat-table td.t2-price{color:#1565c0;background:#f0f7ff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '.cat-table td.t3-price{color:#c62828;background:#fff5f5;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '.cat-table .cat-img{width:36px;height:36px;border-radius:6px;object-fit:cover;}',
+    '.cat-table .cat-img-ph{width:36px;height:36px;border-radius:6px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:16px;}',
+    '.cat-footer{margin-top:20px;padding-top:12px;border-top:2px solid #1a3a6c;display:flex;justify-content:space-between;font-size:10px;color:#888;}',
+    '.cat-page-info{text-align:center;font-size:10px;color:#aaa;margin-top:8px;}',
+    '@media print{',
+    '  body{padding:8px}',
+    '  .cat-doc{max-width:100%!important;padding:16px 20px!important;}',
+    '  .cat-table tr{page-break-inside:avoid;}',
+    '}'
+  ].join('\n');
+
   // إنشاء نافذة طباعة منفصلة بـ CSS كامل
   var printWin = window.open('', '_blank', 'width=900,height=700');
-  printWin.document.write(`<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="UTF-8">
-<title>${document.getElementById('catTitle')?.value || 'كتالوج الجملة'}</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#1a1a1a;padding:20px}
-${document.querySelector('style').textContent.split('@media print')[0]}
-.cat-doc{max-width:100%;padding:16px 20px;}
-@media print{
-  body{padding:8px}
-  .cat-table tbody tr:nth-child(even){background:#f8faff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  .cat-table thead tr{background:#1a3a6c!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:#fff!important;}
-  .cat-title-bar{background:#1a3a6c!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;color:#fff!important;}
-  .cat-table td.t1-price{background:#f1f8f1!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  .cat-table td.t2-price{background:#f0f7ff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  .cat-table td.t3-price{background:#fff5f5!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  .cat-table tr{page-break-inside:avoid;}
-}
-</style>
-</head>
-<body>
-${content.outerHTML}
-</body>
-</html>`);
+  if(!printWin){ toast('⚠️ منع المتصفح فتح نافذة الطباعة — يرجى السماح بالـ Popups','warn'); return; }
+  printWin.document.write('<!DOCTYPE html><html dir="rtl" lang="ar"><head>' +
+    '<meta charset="UTF-8">' +
+    '<title>' + catTitle + '</title>' +
+    '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">' +
+    '<style>' + catCSS + '</style>' +
+    '</head><body>' +
+    content.outerHTML +
+    '</body></html>');
   printWin.document.close();
   printWin.onload = function(){
     printWin.focus();
-    setTimeout(function(){ printWin.print(); }, 500);
+    setTimeout(function(){ printWin.print(); }, 600);
   };
 }
 
