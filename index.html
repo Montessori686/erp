@@ -1774,7 +1774,12 @@ th.sortable{
     <div class="ni" onclick="go('settings',this);loadSettings()"><span class="ni-ic">⚙️</span>إعدادات النظام</div>
   </nav>
   <div class="sb-ftr">
-    <div class="u-chip"><div class="u-av" id="uAv">U</div><div class="u-em" id="uEm">user@email.com</div><button class="out-btn" onclick="doLogout()">خروج</button></div>
+    <div class="u-chip">
+      <div class="u-av" id="uAv">U</div>
+      <div class="u-em" id="uEm">user@email.com</div>
+      <button class="out-btn" title="تغيير كلمة المرور" onclick="openChangePass()" style="padding:3px 6px;margin-left:2px">🔑</button>
+      <button class="out-btn" onclick="doLogout()">خروج</button>
+    </div>
     <div class="ctrl-row">
       <button class="ctrl" id="thBtn" onclick="toggleTheme()">🌙 Dark</button>
       <button class="ctrl" id="lnBtn" onclick="toggleLang()">EN</button>
@@ -3281,6 +3286,42 @@ th.sortable{
   </div>
 </div>
 
+<!-- ══ MODAL: تغيير كلمة المرور ══ -->
+<div class="mo" id="changePassMod" style="display:none" aria-hidden="true">
+  <div class="modal" style="max-width:400px">
+    <div class="mo-h">
+      <div class="mo-t">🔑 تغيير كلمة المرور</div>
+      <button class="mo-x" onclick="closeMod('changePassMod')">✕</button>
+    </div>
+    <div class="mo-b">
+      <div class="fg" style="margin-bottom:12px">
+        <label>كلمة المرور الجديدة *</label>
+        <div style="position:relative">
+          <input type="password" id="cpNewPass" placeholder="8 أحرف على الأقل" dir="ltr"
+            oninput="cpCheckStrength(this.value)">
+          <button onclick="cpToggleVis('cpNewPass',this)" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--t3);font-size:14px">👁</button>
+        </div>
+        <!-- مؤشر القوة -->
+        <div id="cpStrength" style="margin-top:6px;height:4px;border-radius:3px;background:var(--s3);overflow:hidden">
+          <div id="cpStrengthBar" style="height:100%;width:0%;transition:width .3s,background .3s;border-radius:3px"></div>
+        </div>
+        <div id="cpStrengthLbl" style="font-size:10px;color:var(--t3);margin-top:3px"></div>
+      </div>
+      <div class="fg">
+        <label>تأكيد كلمة المرور *</label>
+        <input type="password" id="cpConfPass" placeholder="أعد كتابة كلمة المرور" dir="ltr"
+          oninput="cpCheckMatch()">
+        <div id="cpMatchLbl" style="font-size:11px;margin-top:4px;display:none"></div>
+      </div>
+      <div id="cpError" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--red);border-radius:var(--r);font-size:12px"></div>
+    </div>
+    <div class="mo-f">
+      <button class="btn btn-gh" onclick="closeMod('changePassMod')">إلغاء</button>
+      <button class="btn btn-p" id="cpSaveBtn" onclick="saveNewPassword()">🔑 تغيير</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL: Quick Input — بديل prompt() ══ -->
 <div class="mo" id="quickInputMod" style="display:none" aria-hidden="true">
   <div class="modal" style="max-width:420px">
@@ -3394,6 +3435,93 @@ async function checkSess(){initSB();const{data:{session}}=await sb.auth.getSessi
 async function doLogin(){const e=document.getElementById('authE').value.trim(),p=document.getElementById('authP').value;const er=document.getElementById('authErr'),btn=document.getElementById('authBtn');if(!e||!p){er.textContent='أدخل البريد وكلمة المرور';er.classList.add('show');return;}btn.disabled=true;btn.textContent='جاري الدخول...';er.classList.remove('show');const{error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){er.textContent=error.message==='Invalid login credentials'?'بيانات غلط':error.message;er.classList.add('show');}btn.disabled=false;btn.textContent='🔐 دخول';}
 async function doRegister(){const e=document.getElementById('regE').value.trim(),p=document.getElementById('regP').value;const er=document.getElementById('authErr');if(!e||p.length<6){er.textContent='البريد أو كلمة المرور غير صحيحة';er.classList.add('show');return;}const{error}=await sb.auth.signUp({email:e,password:p});if(error){er.textContent=error.message;er.classList.add('show');}else{er.style.cssText='background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.2);color:#34D399;display:block';er.textContent='✅ تم إنشاء الحساب!';}}
 async function doLogout(){await sb.auth.signOut();}
+
+// ════ تغيير كلمة المرور ════
+function openChangePass(){
+  document.getElementById('cpNewPass').value='';
+  document.getElementById('cpConfPass').value='';
+  document.getElementById('cpStrengthBar').style.width='0%';
+  document.getElementById('cpStrengthLbl').textContent='';
+  document.getElementById('cpMatchLbl').style.display='none';
+  var errEl=document.getElementById('cpError');
+  if(errEl) errEl.style.display='none';
+  var btn=document.getElementById('cpSaveBtn');
+  if(btn){btn.disabled=false;btn.textContent='🔑 تغيير';}
+  openMod('changePassMod');
+  setTimeout(function(){ document.getElementById('cpNewPass')?.focus(); },120);
+}
+
+function cpCheckStrength(pass){
+  var bar=document.getElementById('cpStrengthBar');
+  var lbl=document.getElementById('cpStrengthLbl');
+  if(!bar||!lbl)return;
+  var score=0;
+  if(pass.length>=8) score++;
+  if(pass.length>=12) score++;
+  if(/[A-Z]/.test(pass)) score++;
+  if(/[0-9]/.test(pass)) score++;
+  if(/[^A-Za-z0-9]/.test(pass)) score++;
+  var levels=[
+    {w:'20%',bg:'#EF4444',t:'ضعيف جداً'},
+    {w:'40%',bg:'#F97316',t:'ضعيف'},
+    {w:'60%',bg:'#EAB308',t:'متوسط'},
+    {w:'80%',bg:'#22C55E',t:'قوي'},
+    {w:'100%',bg:'#16A34A',t:'قوي جداً ✓'},
+  ];
+  var lv=levels[Math.min(score,4)];
+  bar.style.width=lv.w; bar.style.background=lv.bg;
+  lbl.textContent=pass.length?lv.t:'';
+  lbl.style.color=lv.bg;
+  cpCheckMatch();
+}
+
+function cpCheckMatch(){
+  var p1=document.getElementById('cpNewPass')?.value||'';
+  var p2=document.getElementById('cpConfPass')?.value||'';
+  var lbl=document.getElementById('cpMatchLbl');
+  if(!lbl)return;
+  if(!p2){lbl.style.display='none';return;}
+  lbl.style.display='block';
+  if(p1===p2){
+    lbl.textContent='✓ كلمتا المرور متطابقتان';
+    lbl.style.color='var(--green)';
+  } else {
+    lbl.textContent='✗ كلمتا المرور غير متطابقتين';
+    lbl.style.color='var(--red)';
+  }
+}
+
+function cpToggleVis(inputId,btn){
+  var inp=document.getElementById(inputId);
+  if(!inp)return;
+  inp.type=inp.type==='password'?'text':'password';
+  btn.textContent=inp.type==='password'?'👁':'🙈';
+}
+
+async function saveNewPassword(){
+  var p1=(document.getElementById('cpNewPass')?.value||'').trim();
+  var p2=(document.getElementById('cpConfPass')?.value||'').trim();
+  var errEl=document.getElementById('cpError');
+  var btn=document.getElementById('cpSaveBtn');
+  var showErr=function(msg){if(errEl){errEl.textContent='❌ '+msg;errEl.style.display='block';}};
+
+  if(!p1||p1.length<8){showErr('كلمة المرور 8 أحرف على الأقل');return;}
+  if(p1!==p2){showErr('كلمتا المرور غير متطابقتين');return;}
+
+  if(errEl) errEl.style.display='none';
+  if(btn){btn.disabled=true;btn.textContent='⏳ جاري الحفظ...';}
+
+  try{
+    var{error}=await sb.auth.updateUser({password:p1});
+    if(error) throw error;
+    toast('✅ تم تغيير كلمة المرور بنجاح');
+    closeMod('changePassMod');
+  }catch(err){
+    showErr(err.message||'حدث خطأ، حاول مرة أخرى');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🔑 تغيير';}
+  }
+}
 function toggleReg(){const s=document.getElementById('regSec');s.style.display=s.style.display==='none'?'block':'none';}
 function showApp(){
   document.getElementById('authOv').style.display='none';
@@ -4106,7 +4234,44 @@ async function viewOrder(id){
     ${o.status==='confirmed'&&!ship?.tracking_id?`<button class="btn btn-ship" onclick="closeMod('orderMod');openShipMod(${id})">🚚 شحن لـ Bosta</button>`:''}`;
   openMod('orderMod');
 }
-function printInvoice(){window.print();}
+function printInvoice(){
+  var invoiceEl = document.getElementById('invoiceArea');
+  if(!invoiceEl){ toast('لا يوجد فاتورة للطباعة','err'); return; }
+  var html = invoiceEl.outerHTML;
+  var sysName = document.getElementById('sysN')?.textContent || 'Montessori ERP';
+  var printWin = window.open('','_blank','width=800,height=700');
+  if(!printWin){ toast('⚠️ يرجى السماح بالـ Popups للطباعة','warn'); return; }
+  printWin.document.write('<!DOCTYPE html><html dir="rtl" lang="ar"><head>'+
+    '<meta charset="UTF-8"><title>فاتورة — '+sysName+'</title>'+
+    '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">'+
+    '<style>'+
+    '*{box-sizing:border-box;margin:0;padding:0}'+
+    "body{font-family:'Cairo',sans-serif;direction:rtl;background:#fff;color:#111;padding:24px}"+
+    '.invoice{background:#fff;border:1px solid #ddd;border-radius:12px;padding:26px;max-width:700px;margin:0 auto}'+
+    '.inv-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px;padding-bottom:18px;border-bottom:2px solid #1B2D5E}'+
+    '.inv-logo{font-size:18px;font-weight:900;color:#1B2D5E}'+
+    '.inv-logo span{color:#4E9AF1}'+
+    '.inv-code{font-size:20px;font-weight:900;color:#4E9AF1;font-family:monospace}'+
+    '.inv-date{font-size:11px;color:#666;margin-top:3px}'+
+    '.inv-section{margin-bottom:16px}'+
+    '.inv-label{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}'+
+    '.inv-items table{width:100%;border-collapse:collapse}'+
+    '.inv-items th{background:#1B2D5E;color:#fff;padding:8px 10px;font-size:11px;font-weight:700;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+    '.inv-items td{padding:8px 10px;font-size:12px;border-bottom:1px solid #eee;text-align:right}'+
+    '.inv-total{background:#f0f4ff;border-radius:8px;padding:12px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+    '.inv-total .main-total{font-size:19px;font-weight:900;color:#4E9AF1}'+
+    '.fw7{font-weight:700}.tg{color:#1EAC78}.tr{color:#E85A2C}.ta{color:#F59E0B}.ts{color:#4E9AF1}'+
+    '.b{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}'+
+    '.b-gr{background:#D1FAE5;color:#065F46}.b-am{background:#FEF3C7;color:#92400E}'+
+    '.b-sky{background:#E0F2FE;color:#075985}.b-rd{background:#FEE2E2;color:#991B1B}'+
+    '.b-blue{background:#DBEAFE;color:#1E40AF}.b-gy{background:#F1F5F9;color:#475569}'+
+    '.b-pu{background:#EDE9FE;color:#5B21B6}'+
+    '.mono{font-family:monospace}'+
+    '@media print{body{padding:8px}.invoice{border:none;padding:12px}}'+
+    '</style></head><body>'+html+'</body></html>');
+  printWin.document.close();
+  printWin.onload=function(){ printWin.focus(); setTimeout(function(){ printWin.print(); },400); };
+}
 async function saveOrderEdit(id){const n=document.getElementById('edN')?.value,p=document.getElementById('edP')?.value;const st=document.getElementById('edSt')?.value,note=document.getElementById('edNote')?.value;const upd={status:st,notes:note,updated_at:new Date().toISOString()};if(n!==undefined)upd.customer_name=n||null;if(p!==undefined)upd.phone=p||null;await sbPatch(`/rest/v1/orders?id=eq.${id}`,upd);toast('✅ تم حفظ التعديلات');closeMod('orderMod');loadOrders();}
 
 // ═══ CONFIRM ═══
