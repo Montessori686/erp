@@ -2101,15 +2101,32 @@ th.sortable{
 <!-- CUSTOMERS -->
 <div class="pg" id="customers">
   <div class="ph"><div class="pt">👥 العملاء</div><button class="btn btn-gh btn-sm" onclick="loadCustomers()">🔄</button></div>
+  <!-- تحذير المكررين -->
+  <div id="cusDupWarn" style="display:none;align-items:center;gap:8px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);border-radius:var(--r);padding:8px 13px;margin-bottom:10px;font-size:12px;color:var(--amber);flex-wrap:wrap"></div>
+  <!-- KPIs -->
   <div class="sg">
     <div class="sc" style="--sc:#38BDF8"><div class="sc-val" id="cAll">-</div><div class="sc-lbl">إجمالي العملاء</div></div>
-    <div class="sc" style="--sc:#10B981"><div class="sc-val" id="cVip">-</div><div class="sc-lbl">⭐ VIP (4+ أوردر)</div></div>
-    <div class="sc" style="--sc:#F59E0B"><div class="sc-val" id="cReg">-</div><div class="sc-lbl">✅ منتظم (2-3)</div></div>
+    <div class="sc" style="--sc:#10B981"><div class="sc-val" id="cVip">-</div><div class="sc-lbl">⭐ VIP</div></div>
+    <div class="sc" style="--sc:#F59E0B"><div class="sc-val" id="cReg">-</div><div class="sc-lbl">✅ منتظم</div></div>
     <div class="sc" style="--sc:#EF4444"><div class="sc-val" id="cRisk">-</div><div class="sc-lbl">⚠️ خطر</div></div>
   </div>
+  <!-- RFM stats -->
+  <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+    <span style="font-size:11px;font-weight:700;color:var(--t3)">RFM:</span>
+    <div id="cRfmStats" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+  </div>
+  <!-- Filters -->
   <div class="fb">
     <input type="search" id="fCusS" placeholder="بحث بالاسم أو التليفون..." oninput="filterCustomers()">
-    <select id="fCusTag" onchange="filterCustomers()"><option value="">كل العملاء</option><option value="vip">⭐ VIP</option><option value="regular">✅ منتظم</option><option value="new">🆕 جديد</option><option value="risky">⚠️ خطر</option></select>
+    <select id="fCusTag" onchange="filterCustomers()"><option value="">كل التصنيفات</option><option value="vip">⭐ VIP</option><option value="regular">✅ منتظم</option><option value="new">🆕 جديد</option><option value="risky">⚠️ خطر</option></select>
+    <select id="fCusRfm" onchange="filterCustomers()">
+      <option value="">كل RFM</option>
+      <option value="champion">🏆 بطل</option>
+      <option value="loyal">⭐ مخلص</option>
+      <option value="potential">🌱 واعد</option>
+      <option value="at_risk">⚠️ خطر</option>
+      <option value="dormant">💤 نائم</option>
+    </select>
     <button class="fr" onclick="resetF('customers')">✕</button>
     <span class="fc" id="fCusCnt"></span>
   </div>
@@ -2361,6 +2378,8 @@ th.sortable{
 
 <div class="pg" id="purchases">
   <div class="ph"><div class="pt">🧾 فواتير الشراء</div><button class="btn btn-p btn-sm" onclick="openMod('poMod')">+ فاتورة</button></div>
+  <!-- Aging Report -->
+  <div id="poAgingWrap" style="display:none;background:var(--s1);border:1px solid var(--bd);border-radius:var(--r2);padding:14px 16px;margin-bottom:14px"></div>
   <div class="fb">
     <input type="search" id="fPoS" placeholder="بحث..." oninput="filterPO()">
     <select id="fPoSt" onchange="filterPO()"><option value="">كل الحالات</option><option value="pending">معلقة</option><option value="partial">جزئي</option><option value="paid">مدفوعة</option></select>
@@ -3634,15 +3653,15 @@ async function loadDashAnalytics(range,fromDate,allOrds,rangeOrds){
   const trendFrom=new Date(Date.now()-90*86400000).toISOString().slice(0,10);
   const [trendOrds,items,gov,custs]=await Promise.all([
     sbGet(`/rest/v1/orders?select=id,total_after,status,created_at&created_at=gte.${trendFrom}T00:00:00&order=created_at.asc`),
-    sbGet('/rest/v1/order_items?select=order_id,product_id,qty,unit_price,products(name,sku)&limit=5000'),
-    sbGet('/rest/v1/shipments?select=governorate,cod_collected,cash_collected'),
+    sbGet('/rest/v1/order_items?select=order_id,product_id,quantity,unit_price,products(name,sku)&limit=5000'),
+    sbGet('/rest/v1/shipments?select=recipient_city,cash_collected'),
     sbGet('/rest/v1/customers?select=id,created_at,total_orders')
   ]);
   // ── Avg items/order (approximate in-range from trendOrds) ──
   const rangeTrend=fromDate?trendOrds.filter(o=>o.created_at>=fromDate):trendOrds;
   const rtLive=rangeTrend.filter(o=>!['cancelled','returned'].includes(o.status));
   const orderItemsCount={};
-  items.forEach(it=>{if(it.order_id!=null)orderItemsCount[it.order_id]=(orderItemsCount[it.order_id]||0)+parseInt(it.qty||0);});
+  items.forEach(it=>{if(it.order_id!=null)orderItemsCount[it.order_id]=(orderItemsCount[it.order_id]||0)+parseInt(it.quantity||0);});
   const rtItemCounts=rtLive.map(o=>orderItemsCount[o.id]||0).filter(x=>x>0);
   const avgItems=rtItemCounts.length?rtItemCounts.reduce((a,b)=>a+b,0)/rtItemCounts.length:0;
   document.getElementById('dItemsPO').textContent=avgItems?avgItems.toFixed(1):'-';
@@ -3668,9 +3687,9 @@ async function loadDashAnalytics(range,fromDate,allOrds,rangeOrds){
   items.forEach(it=>{
     const k=it.product_id;if(!k)return;
     const nm=it.products?.name||('#'+k);
-    const rev=parseFloat(it.qty||0)*parseFloat(it.unit_price||0);
+    const rev=parseFloat(it.quantity||0)*parseFloat(it.unit_price||0);
     if(!prodAgg[k])prodAgg[k]={l:nm,v:0,q:0};
-    prodAgg[k].v+=rev;prodAgg[k].q+=parseFloat(it.qty||0);
+    prodAgg[k].v+=rev;prodAgg[k].q+=parseFloat(it.quantity||0);
   });
   const top=Object.values(prodAgg).sort((a,b)=>b.v-a.v).slice(0,8).map(p=>({l:p.l,v:Math.round(p.v)}));
   document.getElementById('dTopProducts').innerHTML=top.length?svgBarsH(top,{unit:' ج'}):`<div class="an-empty">لا توجد بيانات بيع بعد</div>`;
@@ -3683,8 +3702,8 @@ async function loadDashAnalytics(range,fromDate,allOrds,rangeOrds){
   // ── Governorate chart ──
   const govAgg={};
   (gov||[]).forEach(s=>{
-    const g=(s.governorate||'غير محدد').trim();
-    const v=parseFloat(s.cod_collected||s.cash_collected||0);
+    const g=(s.recipient_city||'غير محدد').trim();
+    const v=parseFloat(s.cash_collected||0);
     govAgg[g]=(govAgg[g]||0)+v;
   });
   const govData=Object.entries(govAgg).filter(([g])=>g!=='غير محدد'||govAgg[g]>0).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([l,v])=>({l,v:Math.round(v)}));
@@ -4010,8 +4029,8 @@ async function returnOrder(orderId, orderCode, customerName, totalAfter){
     try {
       await sbPost('/rest/v1/order_timeline', {
         order_id: orderId,
-        event: 'returned',
-        details: 'تم تسجيل المرتجع. أعيد ' + restored + ' منتج للمخزون.'
+        event_type: 'returned', event_source: 'system',
+        description: 'تم تسجيل المرتجع. أعيد ' + restored + ' منتج للمخزون.'
       });
     } catch(tlErr){ console.warn('timeline insert failed:', tlErr); }
 
@@ -4336,13 +4355,37 @@ function filterIntake(){
 }
 
 // ═══ CUSTOMERS ═══
+// ── RFM: حساب درجة وتصنيف العميل ──
+function calcRFM(cu){
+  var now=Date.now();
+  var lastD=cu.last_order_at?new Date(cu.last_order_at).getTime():0;
+  var daysSince=lastD?Math.floor((now-lastD)/(86400000)):999;
+  var freq=cu.total_orders||0;
+  var spent=parseFloat(cu.total_spent)||0;
+  // Recency Score (1-4): أقل = أحدث
+  var R=daysSince<=7?4:daysSince<=30?3:daysSince<=90?2:1;
+  // Frequency Score (1-4)
+  var F=freq>=10?4:freq>=5?3:freq>=2?2:1;
+  // Monetary Score (1-4)
+  var M=spent>=2000?4:spent>=500?3:spent>=100?2:1;
+  var score=R+F+M;
+  var seg=score>=10?'champion':score>=8?'loyal':score>=6?'potential':score>=4?'at_risk':'dormant';
+  return {R,F,M,score,seg,daysSince};
+}
+
+var RFM_LABELS={
+  champion:  {ar:'🏆 بطل',    cls:'b-gr'},
+  loyal:     {ar:'⭐ مخلص',    cls:'b-sky'},
+  potential: {ar:'🌱 واعد',    cls:'b-blue'},
+  at_risk:   {ar:'⚠️ خطر',    cls:'b-am'},
+  dormant:   {ar:'💤 نائم',    cls:'b-gy'},
+};
+
 async function loadCustomers(){
-  // استخدام جدول customers الحقيقي مع join من orders للإلغاءات والمرتجعات
   const [custs, orders] = await Promise.all([
     sbGet('/rest/v1/customers?select=*&order=total_orders.desc&limit=500'),
     sbGet('/rest/v1/orders?select=phone,status&order=id.desc&limit=2000')
   ]);
-  // احسب الملغي والمرتجع لكل رقم هاتف
   const cancMap={}, retMap={};
   orders.forEach(o=>{
     if(!o.phone)return;
@@ -4351,27 +4394,82 @@ async function loadCustomers(){
   });
   cusData=(custs||[]).map(cu=>({
     ...cu,
-    cancelled: cancMap[cu.phone]||0,
-    returned:  retMap[cu.phone]||0,
+    cancelled:cancMap[cu.phone]||0,
+    returned: retMap[cu.phone]||0,
+    rfm: calcRFM(cu),
   }));
   document.getElementById('cAll').textContent=cusData.length;
   document.getElementById('cVip').textContent=cusData.filter(c=>c.tag==='vip').length;
   document.getElementById('cReg').textContent=cusData.filter(c=>c.tag==='regular').length;
   document.getElementById('cRisk').textContent=cusData.filter(c=>c.tag==='risky').length;
+  // RFM stats
+  var rfmEl=document.getElementById('cRfmStats');
+  if(rfmEl){
+    var segs={champion:0,loyal:0,potential:0,at_risk:0,dormant:0};
+    cusData.forEach(function(c){ if(c.rfm) segs[c.rfm.seg]=(segs[c.rfm.seg]||0)+1; });
+    rfmEl.innerHTML=Object.entries(segs).map(function(e){
+      var l=RFM_LABELS[e[0]]||{ar:e[0],cls:'b-gy'};
+      return '<span class="b '+l.cls+'" style="font-size:11px">'+l.ar+': '+e[1]+'</span>';
+    }).join(' ');
+  }
+  // تحذير المكررين
+  detectDuplicateCustomers();
   filterCustomers();
 }
-function filterCustomers(){const q=document.getElementById('fCusS').value.toLowerCase(),tag=document.getElementById('fCusTag').value;const d=cusData.filter(c=>(!q||c.name?.toLowerCase().includes(q)||c.phone?.includes(q))&&(!tag||c.tag===tag));document.getElementById('fCusCnt').textContent=d.length+' عميل';document.getElementById('cusC').innerHTML=buildTbl(
-    ['الاسم / التليفون','الأوردرات','الإنفاق','ملغي / مرتجع','آخر أوردر','التصنيف','إجراءات'],
-    d.sort((a,b2)=>b2.total_orders-a.total_orders).map(cu=>`<tr>
-      ${mkCB(cu.id,'customers_tbl')}
-      <td class="fw7">${cu.name||'—'}<br><span class="mono" style="font-size:10px;color:var(--t3);font-weight:400">${cu.phone}</span></td>
-      <td class="fw7 ts" style="text-align:center">${cu.total_orders||0}</td>
-      <td class="fw7 tg">${fmt(cu.total_spent)} ج</td>
-      <td style="font-size:11px;text-align:center">${cu.cancelled>0?`<span style="color:var(--red);font-weight:700">${cu.cancelled}❌</span>`:'—'} ${cu.returned>0?`<span style="color:var(--amber);font-weight:700">${cu.returned}↩</span>`:'—'}</td>
-      <td style="font-size:11px;color:var(--t3)">${fmtD(cu.last_order_at)}</td>
-      <td>${tagB(cu.tag)}</td>
-      <td style='white-space:nowrap'><button class="btn btn-edit btn-sm" onclick="editCustomer(${cu.id})">✏️</button> <button class="btn btn-gh btn-sm" onclick="showCustomerOrders('${cu.phone}')">📋</button></td>
-    </tr>`),{cbKey:'id',tableId:'customers_tbl'});
+// ── كشف العملاء المكررين ──
+function detectDuplicateCustomers(){
+  var phoneMap={};
+  cusData.forEach(function(c){ if(c.phone) phoneMap[c.phone]=(phoneMap[c.phone]||[]).concat(c.id); });
+  var dups=Object.entries(phoneMap).filter(function(e){return e[1].length>1;});
+  var warnEl=document.getElementById('cusDupWarn');
+  if(!warnEl)return;
+  if(dups.length){
+    warnEl.style.display='flex';
+    warnEl.innerHTML='⚠️ <strong>'+dups.length+' رقم هاتف مكرر</strong> — عملاء مسجلون أكثر من مرة: '
+      +dups.map(function(e){return e[0]+' ('+e[1].length+'×)';}).join('، ');
+  }else{
+    warnEl.style.display='none';
+  }
+}
+
+function filterCustomers(){
+  var q=document.getElementById('fCusS').value.toLowerCase();
+  var tag=document.getElementById('fCusTag').value;
+  var rfmSeg=document.getElementById('fCusRfm')?.value||'';
+  var d=cusData.filter(function(c){
+    if(q&&!c.name?.toLowerCase().includes(q)&&!c.phone?.includes(q))return false;
+    if(tag&&c.tag!==tag)return false;
+    if(rfmSeg&&c.rfm?.seg!==rfmSeg)return false;
+    return true;
+  });
+  document.getElementById('fCusCnt').textContent=d.length+' عميل';
+  document.getElementById('cusC').innerHTML=buildTbl(
+    ['الاسم / التليفون','الأوردرات','الإنفاق','ملغي/مرتجع','آخر أوردر','RFM','التصنيف','إجراءات'],
+    d.sort(function(a,b){return (b.total_orders||0)-(a.total_orders||0);}).map(function(cu){
+      var rfm=cu.rfm||{};
+      var rfmLabel=RFM_LABELS[rfm.seg]||{ar:'—',cls:'b-gy'};
+      var rfmTitle='R='+rfm.R+' F='+rfm.F+' M='+rfm.M+' | '+rfm.daysSince+' يوم';
+      return '<tr>'+
+        mkCB(cu.id,'customers_tbl')+
+        '<td class="fw7">'+
+          (cu.name||'—')+
+          '<br><span class="mono" style="font-size:10px;color:var(--t3);font-weight:400">'+cu.phone+'</span>'+
+        '</td>'+
+        '<td class="fw7" style="text-align:center;color:var(--acc)">'+(cu.total_orders||0)+'</td>'+
+        '<td class="fw7 tg">'+fmt(cu.total_spent)+' ج</td>'+
+        '<td style="font-size:11px;text-align:center">'+
+          (cu.cancelled>0?'<span style="color:var(--red);font-weight:700">'+cu.cancelled+'❌</span>':'—')+' '+
+          (cu.returned>0?'<span style="color:var(--amber);font-weight:700">'+cu.returned+'↩</span>':'—')+
+        '</td>'+
+        '<td style="font-size:11px;color:var(--t3)">'+fmtD(cu.last_order_at)+'</td>'+
+        '<td title="'+rfmTitle+'"><span class="b '+rfmLabel.cls+'" style="font-size:10px">'+rfmLabel.ar+'</span></td>'+
+        '<td>'+tagB(cu.tag)+'</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="btn btn-edit btn-sm" onclick="editCustomer('+cu.id+')">✏️</button> '+
+          '<button class="btn btn-gh btn-sm" onclick="showCustomerOrders(\''+cu.phone+'\')">📋</button>'+
+        '</td>'+
+      '</tr>';
+    }),{cbKey:'id',tableId:'customers_tbl'});
   dtApply('customers_tbl');
 }
 
@@ -5105,7 +5203,43 @@ function renderPLBody(c,p,cLbl,pLbl){
 }
 
 // ═══ PURCHASES ═══
-async function loadPurchases(){poData=await sbGet('/rest/v1/purchase_orders?select=*,suppliers(name)&order=id.desc');filterPO();}
+async function loadPurchases(){
+  poData=await sbGet('/rest/v1/purchase_orders?select=*,suppliers(name)&order=id.desc');
+  filterPO();
+  renderPOAging();
+}
+
+// ── Aging Report لفواتير الشراء غير المدفوعة ──
+function renderPOAging(){
+  var el=document.getElementById('poAgingWrap');
+  if(!el)return;
+  var unpaid=(poData||[]).filter(function(p){return p.status!=='paid'&&parseFloat(p.remaining_amount||0)>0;});
+  if(!unpaid.length){el.style.display='none';return;}
+  var now=Date.now();
+  var buckets={'0-30':0,'31-60':0,'61-90':0,'90+':0};
+  var amounts={'0-30':0,'31-60':0,'61-90':0,'90+':0};
+  unpaid.forEach(function(p){
+    var days=Math.floor((now-new Date(p.created_at).getTime())/86400000);
+    var rem=parseFloat(p.remaining_amount||0);
+    var k=days<=30?'0-30':days<=60?'31-60':days<=90?'61-90':'90+';
+    buckets[k]++;amounts[k]+=rem;
+  });
+  var totalRem=unpaid.reduce(function(s,p){return s+parseFloat(p.remaining_amount||0);},0);
+  var html='<div style="font-size:11px;font-weight:700;color:var(--t3);margin-bottom:8px">Aging — فواتير شراء غير مدفوعة: '+fmt(totalRem)+' ج إجمالي</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">';
+  var colors={'0-30':'var(--green)','31-60':'var(--amber)','61-90':'var(--red)','90+':'#B91C1C'};
+  Object.entries(buckets).forEach(function(e){
+    var k=e[0],n=e[1];
+    html+='<div style="background:var(--s2);border-radius:var(--r);padding:10px;text-align:center;border-left:3px solid '+colors[k]+'">'+
+      '<div style="font-size:16px;font-weight:900;color:'+colors[k]+'">'+n+'</div>'+
+      '<div style="font-size:10px;color:var(--t2);margin-top:2px">'+k+' يوم</div>'+
+      '<div style="font-size:11px;font-weight:700;color:var(--t3)">'+fmt(amounts[k])+' ج</div>'+
+    '</div>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+  el.style.display='block';
+}
 function filterPO(){const q=document.getElementById('fPoS').value.toLowerCase(),st=document.getElementById('fPoSt').value,f=document.getElementById('fPoF').value,t=document.getElementById('fPoT').value;const d=poData.filter(p=>{if(q&&!p.po_code?.toLowerCase().includes(q)&&!p.suppliers?.name?.toLowerCase().includes(q))return false;if(st&&p.status!==st)return false;if(!inR(p.created_at,f,t))return false;return true;});document.getElementById('fPoCnt').textContent=d.length+' فاتورة';document.getElementById('poC').innerHTML=buildTbl(['رقم الفاتورة','المورد','الإجمالي','المدفوع','المتبقي','الحالة','التاريخ','إجراءات'],d.map(p=>`<tr>
       ${mkCB(p.id,'purchases_tbl')}<td class="mono fw7">${p.po_code||'—'}</td><td class="fw7">${p.suppliers?.name||'—'}</td><td class="fw7">${fmt(p.total_amount)} ج</td><td class="tg">${fmt(p.paid_amount)} ج</td><td class="fw7 ${parseFloat(p.remaining_amount||0)>0?'tr':'tg'}">${fmt(p.remaining_amount)} ج</td><td>${({pending:'<span class="b b-am">معلقة</span>',partial:'<span class="b b-sky">جزئي</span>',paid:'<span class="b b-gr">مدفوعة</span>'}[p.status]||`<span class="b b-gy">${p.status}</span>`)}</td><td style="font-size:11px;color:var(--t3)">${fmtD(p.created_at)}</td><td><button class="btn btn-g btn-sm" onclick="openPoReceive(${p.id},'${(p.po_code||'').replace(/'/g,"\\'")}')">📦 استلام</button></td></tr>`),{cbKey:'id',tableId:'purchases_tbl'});
   dtApply('purchases_tbl');
@@ -5931,8 +6065,8 @@ async function execBulkStatus(){
       try{
         await sbPost('/rest/v1/order_timeline',{
           order_id:o.id,
-          event:_bsmTargetStatus,
-          details:'تم التغيير ضمن عملية bulk ('+toChange.length+' أوردر)'
+          event_type:_bsmTargetStatus, event_source:'system',
+          description:'تم التغيير ضمن عملية bulk ('+toChange.length+' أوردر)'
         });
       }catch(tlErr){ /* Timeline اختياري */ }
 
@@ -6792,6 +6926,19 @@ async function saveWsOrderMeta(){
   var o=await sbGet('/rest/v1/orders?id=eq.'+ordId+'&select=total_after&limit=1');
   var total=o&&o[0]?parseFloat(o[0].total_after):0;
   var creditAmt=payMethod==='cash'?0:payMethod==='credit'?total:total-paidAmt;
+
+  // ── فحص السقف الائتماني ──
+  if(creditAmt>0){
+    var custData=await sbGet('/rest/v1/wholesale_customers?id=eq.'+custId+'&select=name,credit_limit,current_balance&limit=1');
+    if(custData&&custData[0]){
+      var cl=parseFloat(custData[0].credit_limit||0);
+      var cb=parseFloat(custData[0].current_balance||0);
+      if(cl>0&&(cb+creditAmt)>cl){
+        var exceed=fmt(Math.round(cb+creditAmt-cl));
+        if(!confirm('⚠️ تجاوز السقف الائتماني!\n\nالسقف: '+fmt(cl)+' ج\nالمستخدم حالياً: '+fmt(cb)+' ج\nهذا الأوردر (آجل): '+fmt(creditAmt)+' ج\nالتجاوز: '+exceed+' ج\n\nهل تريد المتابعة؟')) return;
+      }
+    }
+  }
   await sbPost('/rest/v1/wholesale_order_meta',{
     order_id:parseInt(ordId),ws_customer_id:parseInt(custId),
     payment_method:payMethod,paid_amount:paidAmt,credit_amount:creditAmt,
@@ -7540,13 +7687,17 @@ function clearAllColFilters(tableId){
 }
 
 /* ── تطبيق كل الفلاتر النشطة على صفوف الجدول ── */
+/* يستخدم data-cf="0" لتمييز الصفوف المخفية بالفلتر بدون التعارض مع dtPaginate */
 function _applyAllColFilters(tableId){
   var tbl = document.getElementById(tableId);
   if(!tbl) return;
   var filters = _colFilters[tableId]||{};
   var hasAny  = Object.keys(filters).length > 0;
   tbl.querySelectorAll('tbody tr').forEach(function(row){
-    if(!hasAny){ row.style.display=''; return; }
+    if(!hasAny){
+      delete row.dataset.cfHidden;
+      return;
+    }
     var show = true;
     Object.keys(filters).forEach(function(ci){
       if(!show) return;
@@ -7556,7 +7707,12 @@ function _applyAllColFilters(tableId){
       var val  = cell ? cell.textContent.replace(/\s+/g,' ').trim() : '';
       if(!allowed.has(val)) show = false;
     });
-    row.style.display = show ? '' : 'none';
+    if(show){
+      delete row.dataset.cfHidden;
+    } else {
+      row.dataset.cfHidden = '1';
+      row.style.display = 'none';
+    }
   });
 }
 
@@ -7788,14 +7944,24 @@ function dtPaginate(tableId){
   if(!tbl) return;
   dtInit(tableId);
   var s = _dtState[tableId];
-  var rows = Array.from(tbl.querySelectorAll('tbody tr'));
-  var total = rows.length;
+  var allRows = Array.from(tbl.querySelectorAll('tbody tr'));
+
+  // ── الصفوف المرئية بعد column filter ──
+  var visibleRows = allRows.filter(function(r){ return !r.dataset.cfHidden; });
+  var total = visibleRows.length;
   var totalPages = Math.max(1, Math.ceil(total / s.perPage));
   s.page = Math.min(s.page, totalPages);
 
-  rows.forEach(function(r, i){
-    var start = (s.page-1)*s.perPage;
-    r.style.display = (i>=start && i<start+s.perPage) ? '' : 'none';
+  // ── إخفاء الصفوف المفلترة وترتيب pagination ──
+  var pageStart = (s.page-1)*s.perPage;
+  var vi = 0; // index في الصفوف المرئية
+  allRows.forEach(function(r){
+    if(r.dataset.cfHidden){
+      r.style.display = 'none'; // مخفي بالفلتر دائماً
+      return;
+    }
+    r.style.display = (vi >= pageStart && vi < pageStart + s.perPage) ? '' : 'none';
+    vi++;
   });
 
   // عرض/إخفاء pagination
@@ -7808,8 +7974,12 @@ function dtPaginate(tableId){
     tbl.parentElement?.appendChild(footer);
   }
 
-  var start = Math.min((s.page-1)*s.perPage+1, total);
-  var end   = Math.min(s.page*s.perPage, total);
+  var start = total===0 ? 0 : Math.min(pageStart+1, total);
+  var end   = Math.min(pageStart+s.perPage, total);
+  // عداد الفلتر النشط
+  var filterNote = allRows.length > total
+    ? ' <span style="color:var(--acc);font-size:10px">(فلتر نشط: '+total+' من '+allRows.length+')</span>'
+    : '';
 
   if(totalPages <= 1){
     footer.style.display = total > 0 ? 'none' : 'none';
@@ -7818,7 +7988,7 @@ function dtPaginate(tableId){
 
   footer.style.display = 'flex';
   footer.innerHTML =
-    '<span>'+start+' — '+end+' من '+total+'</span>'+
+    '<span>'+start+' — '+end+' من '+total+filterNote+'</span>'+
     '<div class="dt-pagination">'+
       '<button class="dt-page-btn" '+(s.page<=1?'disabled':'')+' onclick="dtGoPage(\''+tableId+'\','+(s.page-1)+')">‹</button>'+
       dtPageButtons(s.page, totalPages, tableId)+
@@ -8341,6 +8511,7 @@ function printCatalog(){
     <div class="mgi" id="mg_financial" onclick="moreGo('financial','mg_financial');loadFinancial()"><span class="mgi-ic">💰</span>المالية</div>
     <div class="mgi" id="mg_suppliers" onclick="moreGo('suppliers','mg_suppliers');loadSuppliers()"><span class="mgi-ic">🏭</span>الموردين</div>
     <div class="mgi" id="mg_wholesale" onclick="moreGo('wholesale','mg_wholesale');loadWholesale()"><span class="mgi-ic">🏭</span>الجملة</div>
+    <div class="mgi" id="mg_catalog" onclick="moreGo('catalog','mg_catalog');loadCatalog()"><span class="mgi-ic">📋</span>كتالوج التجار</div>
     <div class="mgi" id="mg_intake" onclick="moreGo('intake','mg_intake');loadIntake()"><span class="mgi-ic">📥</span>الواردة</div>
     <div class="mgi" id="mg_users" onclick="moreGo('users','mg_users');loadUsers()"><span class="mgi-ic">👤</span>المستخدمين</div>
     <div class="mgi" id="mg_settings" onclick="moreGo('settings','mg_settings');loadSettings()"><span class="mgi-ic">⚙️</span>الإعدادات</div>
