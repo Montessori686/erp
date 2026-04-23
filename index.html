@@ -5300,9 +5300,11 @@ async function loadFinancial(){
   const productRev  = validOrds.reduce((s,o)=>s+parseFloat(o.total_after||0),0);
   const shipRev     = validOrds.reduce((s,o)=>s+parseFloat(o.shipping_cost||0),0);
   const returnsVal  = returnOrds.reduce((s,o)=>s+parseFloat(o.total_after||0),0);
-  // الشحن pass-through — لا يدخل في حساب الربح
-  const grossRev    = productRev;          // بدون الشحن
-  const netRev      = grossRev - returnsVal;
+  // ── الإيرادات الصحيحة (COD Business) ──
+  // المرتجعات لم يُحصَّل ثمنها → لم تكن إيراداً أصلاً → لا تُخصَّم
+  // productRev = الإيرادات الفعلية (المرتجعات مستثناة بالفعل في الفلتر)
+  const grossRev    = productRev; // صافي الإيرادات = الأوردرات الصحيحة فقط
+  const netRev      = productRev; // نفس الرقم — لا خصم إضافي
 
   // ── COGS من financial_summary ──
   const totalCOGS = (cogsRows||[]).reduce((s,r)=>s+parseFloat(r.cogs||0),0);
@@ -5388,9 +5390,10 @@ function calcPLData(ords,exps){
   var productRev=valid.reduce(function(s,o){return s+parseFloat(o.total_after||0);},0);
   var shipRev   =valid.reduce(function(s,o){return s+parseFloat(o.shipping_cost||0);},0);
   var returnsVal=returned.reduce(function(s,o){return s+parseFloat(o.total_after||0);},0);
-  // ── الشحن pass-through: العميل يدفعه ويروح لـ Bosta → لا يدخل في الربح ──
-  var grossRev  = productRev;            // بدون الشحن
-  var netRev    = grossRev - returnsVal; // بعد المرتجعات
+  // ── الإيرادات الصحيحة (COD Business) ──
+  // المرتجعات = لم يُحصَّل ثمنها → لا تُخصَّم (مستثناة من valid بالفعل)
+  var grossRev = productRev; // صافي الإيرادات = الأوردرات الصحيحة
+  var netRev   = productRev; // لا خصم إضافي
   var expByCat  ={};
   (exps||[]).forEach(function(e){
     var cat=e.category||'أخرى';
@@ -5513,17 +5516,28 @@ function renderPLBody(c,p,cLbl,pLbl){
   // ── الإيرادات ──
   t+=hdr('💰 الإيرادات');
   t+=row('إيرادات المنتجات',c.productRev,p.productRev,{indent:1});
-  // الشحن pass-through: يظهر معلوماتياً فقط — لا يدخل في الربح
-  t+='<tr class="pl-sub" style="opacity:.65">'+
-    '<td style="padding-right:31px;color:var(--t3);font-style:italic">'+
-      '🚚 مصاريف الشحن <span style="font-size:9px;background:rgba(245,158,11,.1);color:var(--amber);padding:1px 6px;border-radius:8px;margin-right:4px">pass-through</span>'+
-    '</td>'+
-    '<td class="pl-val" style="color:var(--t3)">'+fmt(c.shipRev)+' ج</td>'+
-    '<td class="pl-val" style="color:var(--t3)">'+fmt(p.shipRev)+' ج</td>'+
-    '<td class="pl-delta" style="color:var(--t3);font-size:10px">لا تؤثر على الربح</td>'+
-  '</tr>';
-  t+=row('إجمالي إيرادات المنتجات',c.grossRev,p.grossRev,{cls:'pl-total'});
-  t+=row('− المرتجعات',-c.returnsVal,-p.returnsVal,{indent:1,invert:true});
+  // الشحن pass-through — معلومة فقط
+  if(c.shipRev>0||p.shipRev>0){
+    t+='<tr class="pl-sub" style="opacity:.55">'+
+      '<td style="padding-right:31px;color:var(--t3);font-style:italic">'+
+        '🚚 مصاريف الشحن <span style="font-size:9px;background:rgba(245,158,11,.1);color:var(--amber);padding:1px 6px;border-radius:8px;margin-right:4px">pass-through</span>'+
+      '</td>'+
+      '<td class="pl-val" style="color:var(--t3)">'+fmt(c.shipRev)+' ج</td>'+
+      '<td class="pl-val" style="color:var(--t3)">'+fmt(p.shipRev)+' ج</td>'+
+      '<td class="pl-delta" style="color:var(--t3);font-size:10px">لا تؤثر على الربح</td>'+
+    '</tr>';
+  }
+  // المرتجعات — معلومة إضافية لا تُخصَّم (لم يُحصَّل ثمنها في COD)
+  if(c.returnsVal>0||p.returnsVal>0){
+    t+='<tr class="pl-sub" style="opacity:.55">'+
+      '<td style="padding-right:31px;color:var(--t3);font-style:italic">'+
+        '↩ مرتجعات الفترة <span style="font-size:9px;background:rgba(148,163,184,.1);color:var(--t3);padding:1px 6px;border-radius:8px;margin-right:4px">لم تُحصَّل</span>'+
+      '</td>'+
+      '<td class="pl-val" style="color:var(--t3)">'+fmt(c.returnsVal)+' ج</td>'+
+      '<td class="pl-val" style="color:var(--t3)">'+fmt(p.returnsVal)+' ج</td>'+
+      '<td class="pl-delta" style="color:var(--t3);font-size:10px">تم إعادة المخزون</td>'+
+    '</tr>';
+  }
   t+=sep();
   t+=row('صافي الإيرادات',c.netRev,p.netRev,{cls:'pl-section'});
 
